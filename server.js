@@ -224,12 +224,15 @@ const rooms = new Map();
 const wsRoomMap = new Map(); // ws → room code
 
 class Room {
-    constructor(code, mapKey, creatorWs, creatorName) {
+    constructor(code, mapKey, creatorWs, creatorName, isPublic) {
         this.code = code;
         this.mapKey = mapKey;
-        this.lobbyPlayers = [{ ws: creatorWs, name: creatorName, index: 0, color: COLORS[0] }];
+        this.isPublic = !!isPublic;
+        this.lobbyPlayers = [{ ws: creatorWs, name: creatorName, index: 0, color: COLORS[0], ready: false }];
         this.creatorWs = creatorWs;
         this.running = false;
+        this.autoTimer = null; // 60s countdown interval
+        this.autoCountdown = -1; // seconds remaining (-1 = not started)
         this.gameLoop = null;
         this.frame = 0;
         this.worldW = 0;
@@ -252,8 +255,50 @@ class Room {
     addPlayer(ws, name) {
         if (this.lobbyPlayers.length >= 8) return -1;
         const idx = this.lobbyPlayers.length;
-        this.lobbyPlayers.push({ ws, name, index: idx, color: COLORS[idx] });
+        this.lobbyPlayers.push({ ws, name, index: idx, color: COLORS[idx], ready: false });
+        this.checkAutoCountdown();
         return idx;
+    }
+
+    toggleReady(ws) {
+        const p = this.lobbyPlayers.find(p => p.ws === ws);
+        if (!p || this.running) return;
+        p.ready = !p.ready;
+        this.broadcastLobby();
+        this.checkAutoCountdown();
+    }
+
+    checkAutoCountdown() {
+        if (this.running) return;
+        const count = this.lobbyPlayers.length;
+        if (count < 2) {
+            // Cancel any running timer
+            if (this.autoTimer) { clearInterval(this.autoTimer); this.autoTimer = null; this.autoCountdown = -1; }
+            this.broadcastLobby();
+            return;
+        }
+        // Check if all players are ready
+        const allReady = this.lobbyPlayers.every(p => p.ready);
+        if (allReady && count >= 2) {
+            if (this.autoTimer) { clearInterval(this.autoTimer); this.autoTimer = null; }
+            this.autoCountdown = -1;
+            this.startGame();
+            return;
+        }
+        // For public rooms, start 60s auto-countdown when 2+ players
+        if (this.isPublic && !this.autoTimer) {
+            this.autoCountdown = 60;
+            this.broadcastLobby();
+            this.autoTimer = setInterval(() => {
+                this.autoCountdown--;
+                if (this.autoCountdown <= 0) {
+                    clearInterval(this.autoTimer); this.autoTimer = null;
+                    if (this.lobbyPlayers.length >= 2 && !this.running) this.startGame();
+                } else {
+                    this.broadcastLobby();
+                }
+            }, 1000);
+        }
     }
 
     removePlayer(ws) {
@@ -276,12 +321,13 @@ class Room {
         if (!this.running) {
             this.lobbyPlayers.splice(idx, 1);
             this.lobbyPlayers.forEach((p, i) => { p.index = i; p.color = COLORS[i]; });
+            this.checkAutoCountdown();
             this.broadcastLobby();
         }
     }
 
     broadcastLobby() {
-        const lobbyData = this.lobbyPlayers.map(p => ({ name: p.name, color: p.color, index: p.index }));
+        const lobbyData = this.lobbyPlayers.map(p => ({ name: p.name, color: p.color, index: p.index, ready: p.ready }));
         for (const p of this.lobbyPlayers) {
             this.sendTo(p.ws, {
                 t: 'lobby',
@@ -289,7 +335,9 @@ class Room {
                 you: p.index,
                 map: this.mapKey,
                 code: this.code,
-                isCreator: p.ws === this.creatorWs
+                isCreator: p.ws === this.creatorWs,
+                isPublic: this.isPublic,
+                autoCountdown: this.autoCountdown
             });
         }
     }
@@ -311,6 +359,7 @@ class Room {
 
     startGame() {
         if (this.running || this.lobbyPlayers.length < 2) return;
+        if (this.autoTimer) { clearInterval(this.autoTimer); this.autoTimer = null; this.autoCountdown = -1; }
         let c = 3;
         this.broadcast({ t: 'countdown', v: c });
         const iv = setInterval(() => {
@@ -801,6 +850,7 @@ class Room {
     }
 
     destroy() {
+        if (this.autoTimer) { clearInterval(this.autoTimer); this.autoTimer = null; }
         this.stopGame();
         for (const p of this.lobbyPlayers) {
             this.sendTo(p.ws, { t: 'over', w: 'Room closed', stats: null });
@@ -851,11 +901,12 @@ wss.on('connection', (ws) => {
             case 'create': {
                 let code;
                 do { code = randomCode(); } while (rooms.has(code));
-                const room = new Room(code, data.map, ws, data.name || 'HOST');
+                const isPublic = !!data.pub;
+                const room = new Room(code, data.map, ws, data.name || 'HOST', isPublic);
                 rooms.set(code, room);
                 wsRoomMap.set(ws, code);
                 room.broadcastLobby();
-                console.log(`Room ${code} created (${data.map}) — ${rooms.size} active rooms`);
+                console.log(`Room ${code} created (${data.map}, ${isPublic ? 'public' : 'private'}) — ${rooms.size} active rooms`);
                 break;
             }
             case 'join': {
@@ -877,6 +928,31 @@ wss.on('connection', (ws) => {
                 const room = rooms.get(code);
                 if (!room || room.creatorWs !== ws) return;
                 room.startGame();
+                break;
+            }
+            case 'ready': {
+                const code = wsRoomMap.get(ws);
+                if (!code) return;
+                const room = rooms.get(code);
+                if (!room) return;
+                room.toggleReady(ws);
+                break;
+            }
+            case 'browse': {
+                const publicRooms = [];
+                for (const [code, room] of rooms) {
+                    if (room.isPublic && !room.running && room.lobbyPlayers.length < 8) {
+                        publicRooms.push({
+                            code: code,
+                            map: room.mapKey,
+                            mapName: MAPS[room.mapKey] ? MAPS[room.mapKey].name : room.mapKey,
+                            players: room.lobbyPlayers.length,
+                            max: 8,
+                            host: room.lobbyPlayers[0] ? room.lobbyPlayers[0].name : '?'
+                        });
+                    }
+                }
+                ws.send(JSON.stringify({ t: 'browse', rooms: publicRooms }));
                 break;
             }
             case 'rematch': {
