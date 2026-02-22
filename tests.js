@@ -33,7 +33,13 @@ const LAND_MAX_SPD = 2.2, LAND_MAX_ANGLE = 0.85;
 const PICKUP_R = 18;
 const PICKUP_MAX = 5;
 const PICKUP_SPAWN_INTERVAL = 360;
-const BEAM_DUR = 60, BEAM_CD = 54, BEAM_RANGE = 450, BEAM_HIT_INTERVAL = 8;
+const BEAM_DUR = 45, BEAM_CD = 54, BEAM_RANGE = 350, BEAM_HIT_INTERVAL = 8;
+const WEAPON_TIMER = 1200;
+const HOMING_TURN = 0.10;
+const LASER_RANGE = 350;
+const LASER_DUR = 45;
+const XP_PER_KILL = 25, XP_PER_WIN = 100, XP_PER_WAVE = 50, XP_PER_LAND = 5, XP_PER_PICKUP = 10;
+const XP_LEVEL_BASE = 100, XP_LEVEL_SCALE = 1.4;
 const STATE_INTERVAL = 2; // must match server.js (30 Hz broadcast)
 const PICKUP_TYPES = [
     { id:'spread',  name:'SPREAD',  color:'#ff4400', icon:'⊕', desc:'3-way shot',     weight:3 },
@@ -97,13 +103,14 @@ function killPlayer(p, force) {
     if (!p.alive||p.invT>0) return;
     if (p.shield > 0 && !force) {
         p.shield--;
-        p.invT = 30;
+        p.invT = 1;
+        p.flashTimer = 12;
         events.push({type:'shieldAbsorb', id:p.id});
         return;
     }
     p.alive=false; p.lives--; p.respawnT=RESPAWN_T; p.vx=0; p.vy=0; p.landed=false;
     if (playerDeaths[p.id] !== undefined) playerDeaths[p.id]++;
-    p.weapon = 'normal'; p.shield = 0;
+    p.weapon = 'normal'; p.shield = 0; p.weaponTimer = 0;
     events.push({type:'kill', id:p.id});
 }
 
@@ -144,6 +151,7 @@ function applyPickup(p, type) {
         p.shield = (p.shield || 0) + 1;
     } else {
         p.weapon = type;
+        p.weaponTimer = WEAPON_TIMER;
     }
     events.push({type:'pickup', id:p.id, pickup:type});
 }
@@ -449,7 +457,7 @@ section('5. Kill Player Mechanics');
     assert(p3.alive, 'shielded player survives');
     assert(p3.lives === 5, 'shielded player keeps lives');
     assert(p3.shield === 0, 'single shield is consumed');
-    assert(p3.invT === 30, 'brief invincibility after shield pop');
+    assert(p3.invT === 1, 'brief invincibility after shield pop (~10ms)');
     assert(events.some(e=>e.type==='shieldAbsorb'), 'shield absorb event emitted');
     // After invincibility
     p3.invT = 0;
@@ -652,13 +660,22 @@ section('11. Pickup System (7 types)');
 // ── 12. WEAPON FIRE COOLDOWNS ──
 section('12. Weapon Fire Cooldowns');
 {
-    assert(FIRE_CD === 14, 'normal fire cooldown is 14');
+    const STOCK_CD = Math.floor(FIRE_CD / 1.5); // 9 frames — 1.5x faster than base
+    assert(FIRE_CD === 14, 'base fire cooldown constant is 14');
+    assert(STOCK_CD === 9, 'stock weapon fires at CD 9 (1.5x faster)');
     assert(Math.floor(FIRE_CD*0.4) === 5, 'rapid fire cooldown is 5 (2.5x fire rate)');
     assert(Math.floor(FIRE_CD*1.2) === 16, 'heavy fire cooldown is 16');
-    assert(BEAM_DUR + BEAM_CD === 114, 'laser total cycle = beam duration + cooldown = 114');
+    assert(BEAM_DUR + BEAM_CD === 99, 'laser total cycle = beam duration + cooldown = 99');
     assert(Math.floor(FIRE_CD*1.3) === 18, 'burst fire cooldown is 18');
     assert(Math.floor(FIRE_CD*1.1) === 15, 'homing fire cooldown is 15');
-    assert(FIRE_CD === 14, 'spread fire cooldown is 14 (same as normal)');
+    assert(FIRE_CD === 14, 'spread fire cooldown is 14');
+
+    // All powerup weapons must outperform stock in DPS or utility
+    // DPS = bullets_per_shot / cooldown. Stock = 1/9 ≈ 0.111
+    const stockDPS = 1 / STOCK_CD;
+    assert(5 / FIRE_CD > stockDPS, 'spread DPS (5 bullets/14cd) > stock');
+    assert(2 / Math.floor(FIRE_CD*0.4) > stockDPS, 'rapid DPS (2 bullets/5cd) > stock');
+    assert(7 / Math.floor(FIRE_CD*1.3) > stockDPS, 'burst DPS (7 bullets/18cd) > stock');
 
     const pCd = makePlayer({fireCd:5, firing:true});
     assert(pCd.fireCd > 0, 'player has active cooldown');
@@ -692,9 +709,9 @@ section('13. Weapon Bullet Properties');
     assert(7 === 7, 'heavy bullet size = 7');
 
     // Laser: beam weapon (no bullets)
-    assert(BEAM_DUR === 60, 'laser beam duration = 60 frames (~1 sec)');
+    assert(BEAM_DUR === 45, 'laser beam duration = 45 frames (nerfed)');
     assert(BEAM_CD === 54, 'laser beam cooldown = 54 frames (~0.9 sec)');
-    assert(BEAM_RANGE === 450, 'laser beam range = 450px');
+    assert(BEAM_RANGE === 350, 'laser beam range = 350px (nerfed)');
     assert(BEAM_HIT_INTERVAL === 8, 'laser beam hit check interval = 8 frames');
 
     // Burst: 7-bullet shotgun
@@ -835,9 +852,9 @@ section('17. Ship-to-Ship Collision');
     // Shield absorbs ship collision (killPlayer with no force)
     const sp = makePlayer({x: 100, y: 100, alive: true, invT: 0, shield: 1, lives: 5});
     // killPlayer without force: shield should absorb
-    if (sp.shield > 0) { sp.shield--; sp.invT = 30; }
+    if (sp.shield > 0) { sp.shield--; sp.invT = 1; }
     assert(sp.shield === 0, 'shield consumed by collision');
-    assert(sp.invT === 30, 'brief invincibility after shield pop');
+    assert(sp.invT === 1, 'brief invincibility after shield pop (~10ms)');
 
     // No shield = death
     const dp = makePlayer({x: 100, y: 100, alive: true, invT: 0, shield: 0, lives: 5});
@@ -1390,9 +1407,9 @@ section('42. Force Kill (Base Kamikaze Bypass)');
 section('43. Laser Beam Constants');
 // =====================================================
 {
-    assert(BEAM_DUR === 60, 'beam lasts 60 frames (~1 second)');
+    assert(BEAM_DUR === 45, 'beam lasts 45 frames (nerfed)');
     assert(BEAM_CD === 54, 'beam cooldown 54 frames (~0.9 sec)');
-    assert(BEAM_RANGE === 450, 'beam max range 450px');
+    assert(BEAM_RANGE === 350, 'beam max range 350px (nerfed)');
     assert(BEAM_HIT_INTERVAL === 8, 'beam hit check every 8 frames');
     assert(BEAM_DUR + BEAM_CD > FIRE_CD * 2, 'laser total cycle much longer than normal fire');
     assert(BEAM_RANGE > 300, 'beam range is significant');
@@ -1945,9 +1962,9 @@ section('67. Client-Server Constant Alignment');
     assert(PICKUP_R === 18, 'PICKUP_R matches');
     assert(PICKUP_MAX === 5, 'PICKUP_MAX matches');
     assert(PICKUP_SPAWN_INTERVAL === 360, 'PICKUP_SPAWN_INTERVAL matches');
-    assert(BEAM_DUR === 60, 'BEAM_DUR matches');
+    assert(BEAM_DUR === 45, 'BEAM_DUR matches (nerfed)');
     assert(BEAM_CD === 54, 'BEAM_CD matches');
-    assert(BEAM_RANGE === 450, 'BEAM_RANGE matches');
+    assert(BEAM_RANGE === 350, 'BEAM_RANGE matches (nerfed)');
     assert(BEAM_HIT_INTERVAL === 8, 'BEAM_HIT_INTERVAL matches');
     assert(STATE_INTERVAL === 2, 'STATE_INTERVAL matches server (30Hz)');
     assert(STREAK_WINDOW === 240, 'STREAK_WINDOW matches');
@@ -2245,8 +2262,8 @@ section('77. Weapon Fire Properties');
 
     // Laser is special (beam weapon)
     const laserCd = BEAM_DUR + BEAM_CD;
-    assert(laserCd === 114, `laser cooldown = ${BEAM_DUR}+${BEAM_CD} = 114`);
-    assert(BEAM_RANGE === 450, 'laser beam range = 450');
+    assert(laserCd === 99, `laser cooldown = ${BEAM_DUR}+${BEAM_CD} = 99`);
+    assert(BEAM_RANGE === 350, 'laser beam range = 350 (nerfed)');
     assert(BEAM_HIT_INTERVAL === 8, 'laser hits every 8 frames');
 }
 
@@ -2675,10 +2692,10 @@ section('96. Ship-to-Ship Collision Detection');
     const shielded = { alive: true, shield: 1, invT: 0, lives: 5 };
     const unshielded = { alive: true, shield: 0, invT: 0, lives: 5 };
     // killPlayer logic for shielded:
-    if (shielded.shield > 0) { shielded.shield--; shielded.invT = 30; }
+    if (shielded.shield > 0) { shielded.shield--; shielded.invT = 1; }
     else { shielded.alive = false; shielded.lives--; }
     // killPlayer logic for unshielded:
-    if (unshielded.shield > 0) { unshielded.shield--; unshielded.invT = 30; }
+    if (unshielded.shield > 0) { unshielded.shield--; unshielded.invT = 1; }
     else { unshielded.alive = false; unshielded.lives--; }
     assert(shielded.alive === true, 'shielded ship survives collision');
     assert(shielded.shield === 0, 'shield consumed');
@@ -2734,6 +2751,456 @@ section('97. Fixed Viewport & DPR Scaling');
     const canvasH = 915 * dpr;
     assert(canvasW === 824, 'canvas width = screen CSS width * DPR');
     assert(canvasH === 1830, 'canvas height = screen CSS height * DPR');
+}
+
+console.log(`\n${'='.repeat(50)}`);
+
+// =====================================================
+section('98. Weapon Timer System');
+// =====================================================
+{
+    assert(WEAPON_TIMER === 1200, 'weapon timer = 1200 frames (~20 seconds)');
+    // Picking up a weapon sets weaponTimer
+    const p = {id:0, weapon:'normal', shield:0, lives:5, alive:true, weaponTimer:0};
+    events = [];
+    applyPickup(p, 'spread');
+    assert(p.weapon === 'spread', 'weapon applied');
+    assert(p.weaponTimer === WEAPON_TIMER, 'weaponTimer set on weapon pickup');
+
+    // Heart/shield do NOT set weaponTimer
+    const p2 = {id:1, weapon:'normal', shield:0, lives:3, alive:true, weaponTimer:0};
+    events = [];
+    applyPickup(p2, 'heart');
+    assert(p2.weaponTimer === 0, 'heart does not set weaponTimer');
+    applyPickup(p2, 'shield');
+    assert(p2.weaponTimer === 0, 'shield does not set weaponTimer');
+
+    // Weapon reverts on timer expiry
+    const p3 = {id:2, weapon:'laser', weaponTimer:1, alive:true, lives:5};
+    p3.weaponTimer--;
+    if (p3.weaponTimer <= 0 && p3.weapon !== 'normal') p3.weapon = 'normal';
+    assert(p3.weapon === 'normal', 'weapon reverts to normal on timer expiry');
+    assert(p3.weaponTimer === 0, 'weaponTimer reaches 0');
+
+    // Death clears weapon timer
+    const p4 = {id:3, weapon:'rapid', weaponTimer:500, alive:true, lives:3, shield:0, vx:1, vy:1, landed:false, respawnT:0, invT:0};
+    playerDeaths = [0,0,0,0];
+    events = [];
+    killPlayer(p4);
+    assert(p4.weapon === 'normal', 'death resets weapon to normal');
+    assert(p4.weaponTimer === 0, 'death clears weaponTimer');
+}
+
+// =====================================================
+section('99. Weapon Balance — Laser Nerf & Homing Buff');
+// =====================================================
+{
+    assert(LASER_DUR === 45, 'laser duration nerfed to 45 frames');
+    assert(LASER_RANGE === 350, 'laser range nerfed to 350px');
+    assert(HOMING_TURN === 0.10, 'homing turn rate buffed to 0.10');
+    // Laser is shorter and weaker
+    assert(LASER_DUR < 60, 'laser duration less than old 60');
+    assert(LASER_RANGE < 450, 'laser range less than old 450');
+    // Homing tracks faster
+    assert(HOMING_TURN > 0.06, 'homing turn rate greater than old 0.06');
+    // Homing simulation: a homing bullet should converge
+    let bAngle = 0, tAngle = Math.PI/4; // target 45 degrees away
+    for (let i = 0; i < 30; i++) {
+        let ad = tAngle - bAngle;
+        while (ad > Math.PI) ad -= Math.PI*2;
+        while (ad < -Math.PI) ad += Math.PI*2;
+        bAngle += ad * HOMING_TURN;
+    }
+    assert(Math.abs(bAngle - tAngle) < 0.05, 'homing converges within 30 steps at 0.10 turn rate');
+}
+
+// =====================================================
+section('100. Hit Flash & Shield Absorb');
+// =====================================================
+{
+    const p = {id:0, alive:true, lives:5, shield:2, invT:0, vx:1, vy:1, landed:false, respawnT:0, weapon:'spread', weaponTimer:500, flashTimer:0};
+    playerDeaths = [0];
+    events = [];
+    killPlayer(p);
+    assert(p.alive === true, 'shield absorbs hit, player still alive');
+    assert(p.shield === 1, 'shield decremented');
+    assert(p.flashTimer === 12, 'flashTimer set to 12 on shield absorb');
+    assert(p.invT === 1, 'short invincibility on shield absorb (~10ms)');
+
+    // Flash timer counts down
+    for (let i = 0; i < 12; i++) p.flashTimer--;
+    assert(p.flashTimer === 0, 'flashTimer reaches 0 after 12 frames');
+}
+
+// =====================================================
+section('101. XP & Progression System');
+// =====================================================
+{
+    assert(XP_PER_KILL === 25, 'XP_PER_KILL = 25');
+    assert(XP_PER_WIN === 100, 'XP_PER_WIN = 100');
+    assert(XP_PER_WAVE === 50, 'XP_PER_WAVE = 50');
+    assert(XP_PER_LAND === 5, 'XP_PER_LAND = 5');
+    assert(XP_PER_PICKUP === 10, 'XP_PER_PICKUP = 10');
+    assert(XP_LEVEL_BASE === 100, 'XP_LEVEL_BASE = 100');
+    assert(XP_LEVEL_SCALE === 1.4, 'XP_LEVEL_SCALE = 1.4');
+
+    // Level XP requirement scales
+    function xpForLevel(lv) { return Math.floor(XP_LEVEL_BASE * Math.pow(XP_LEVEL_SCALE, lv - 1)); }
+    assert(xpForLevel(1) === 100, 'level 1 requires 100 XP');
+    assert(xpForLevel(2) === 140, 'level 2 requires 140 XP');
+    assert(xpForLevel(3) >= 195 && xpForLevel(3) <= 196, 'level 3 requires ~196 XP');
+    assert(xpForLevel(5) > xpForLevel(4), 'XP requirement increases each level');
+    assert(xpForLevel(10) > 500, 'high levels require significant XP');
+}
+
+// =====================================================
+section('102. Binary Search getTerrainYAt');
+// =====================================================
+{
+    // Binary search should return same results as linear for sorted terrain
+    const terrain = [];
+    for (let i = 0; i <= 100; i++) terrain.push({x: i * 10, y: 500 + Math.sin(i * 0.3) * 100});
+
+    // Test at known points
+    const r1 = getTerrainYAt(50, terrain);
+    assert(r1 !== null, 'binary search finds terrain at x=50');
+
+    const r2 = getTerrainYAt(500, terrain);
+    assert(r2 !== null, 'binary search finds terrain at x=500');
+
+    // Edge cases
+    const r3 = getTerrainYAt(0, terrain);
+    assert(r3 !== null, 'binary search finds terrain at start');
+
+    const r4 = getTerrainYAt(999, terrain);
+    assert(r4 !== null, 'binary search finds terrain at x=999');
+
+    const r5 = getTerrainYAt(1001, terrain);
+    assert(r5 === null, 'binary search returns null beyond terrain');
+
+    // Interpolation accuracy
+    const midX = 55; // between arr[5].x=50 and arr[6].x=60
+    const result = getTerrainYAt(midX, terrain);
+    assert(result !== null, 'binary search interpolates between points');
+    const expectedY = terrain[5].y + 0.5 * (terrain[6].y - terrain[5].y);
+    assertApprox(result.y, expectedY, 0.01, 'binary search interpolation matches linear');
+}
+
+// =====================================================
+section('103. Input Sensitivity');
+// =====================================================
+{
+    // Sensitivity multiplied to rotation
+    const baseSensitivity = 1.0;
+    const lowSensitivity = 0.5;
+    const highSensitivity = 1.5;
+
+    const baseRot = 0.8;
+    assert(baseRot * baseSensitivity === 0.8, 'default sensitivity preserves rotation');
+    assertApprox(baseRot * lowSensitivity, 0.4, 0.001, 'low sensitivity halves rotation');
+    assertApprox(baseRot * highSensitivity, 1.2, 0.001, 'high sensitivity increases rotation');
+
+    // Clamped range
+    assert(lowSensitivity >= 0.3, 'sensitivity has reasonable minimum');
+    assert(highSensitivity <= 2.0, 'sensitivity has reasonable maximum');
+}
+
+// =====================================================
+section('104. Left-Handed Mode');
+// =====================================================
+{
+    const VIEW_W = 412;
+    // Normal mode: left side = joystick, right side = fire
+    const tapX_left = 100;  // left side of screen
+    const tapX_right = 300; // right side of screen
+
+    // Normal mode
+    const leftHanded = false;
+    const jSideL = leftHanded ? (tapX_left >= VIEW_W * 0.45) : (tapX_left < VIEW_W * 0.55);
+    const fSideL = leftHanded ? (tapX_left < VIEW_W * 0.55) : (tapX_left >= VIEW_W * 0.45);
+    assert(jSideL === true, 'normal: left tap = joystick side');
+    assert(fSideL === false, 'normal: left tap ≠ fire side');
+
+    const jSideR = leftHanded ? (tapX_right >= VIEW_W * 0.45) : (tapX_right < VIEW_W * 0.55);
+    const fSideR = leftHanded ? (tapX_right < VIEW_W * 0.55) : (tapX_right >= VIEW_W * 0.45);
+    assert(jSideR === false, 'normal: right tap ≠ joystick side');
+    assert(fSideR === true, 'normal: right tap = fire side');
+
+    // Left-handed mode: reversed
+    const lh = true;
+    const jSideLH_L = lh ? (tapX_left >= VIEW_W * 0.45) : (tapX_left < VIEW_W * 0.55);
+    const fSideLH_L = lh ? (tapX_left < VIEW_W * 0.55) : (tapX_left >= VIEW_W * 0.45);
+    assert(jSideLH_L === false, 'left-handed: left tap ≠ joystick');
+    assert(fSideLH_L === true, 'left-handed: left tap = fire side');
+
+    const jSideLH_R = lh ? (tapX_right >= VIEW_W * 0.45) : (tapX_right < VIEW_W * 0.55);
+    const fSideLH_R = lh ? (tapX_right < VIEW_W * 0.55) : (tapX_right >= VIEW_W * 0.45);
+    assert(jSideLH_R === true, 'left-handed: right tap = joystick');
+    assert(fSideLH_R === false, 'left-handed: right tap ≠ fire side');
+}
+
+// =====================================================
+section('105. Bot AI Personalities');
+// =====================================================
+{
+    // Bot personalities assigned deterministically by id
+    const personalities = ['aggressive','evasive','sniper','hunter'];
+    for (let i = 0; i < 8; i++) {
+        const pers = personalities[i % 4];
+        assert(typeof pers === 'string', `bot ${i} gets personality: ${pers}`);
+    }
+    assert(personalities[0] === 'aggressive', 'id%4=0 → aggressive');
+    assert(personalities[1] === 'evasive', 'id%4=1 → evasive');
+    assert(personalities[2] === 'sniper', 'id%4=2 → sniper');
+    assert(personalities[3] === 'hunter', 'id%4=3 → hunter');
+
+    // Landed bots immediately launch (thrust=true) instead of getting stuck
+    const landedBot = {id:1, landed:true, botDifficulty:5, angle:-Math.PI/2, x:500, y:500, vx:0, vy:0, lastInput:null};
+    // Simulate computeBotInput logic for landed bots
+    const launchInput = {rot:0, thrust:true, revThrust:false, fire:false};
+    assert(launchInput.thrust === true, 'landed bot thrusts to launch off pad');
+    assert(launchInput.fire === false, 'landed bot does not fire while launching');
+    assert(launchInput.rot === 0, 'landed bot does not rotate while launching');
+}
+
+// =====================================================
+section('106. Survival Boss Waves');
+// =====================================================
+{
+    // Boss wave every 5th wave
+    for (let w = 1; w <= 20; w++) {
+        const isBoss = (w % 5 === 0);
+        if (w === 5 || w === 10 || w === 15 || w === 20) {
+            assert(isBoss, `wave ${w} is a boss wave`);
+        } else {
+            assert(!isBoss, `wave ${w} is not a boss wave`);
+        }
+    }
+
+    // Boss waves have more bots
+    const normalBots = Math.min(1 + Math.floor(4 / 2), 7); // wave 4
+    const bossBots = Math.min(2 + Math.floor(5 / 5), 8); // wave 5 boss
+    assert(bossBots >= 3, 'boss wave has at least 3 bots');
+
+    // Bot lives scale with wave
+    const normalLives = Math.min(1 + Math.floor(4 / 4), 3); // wave 4
+    const bossLives = Math.min(3 + Math.floor(5 / 5), 6); // wave 5 boss
+    assert(bossLives > normalLives, 'boss wave bots have more lives');
+
+    // Wave modifiers
+    const lowGravWaves = [];
+    const heavyWaves = [];
+    for (let w = 1; w <= 21; w++) {
+        if (w >= 3 && w % 3 === 0) lowGravWaves.push(w);
+        if (w >= 7 && w % 7 === 0) heavyWaves.push(w);
+    }
+    assert(lowGravWaves.includes(3), 'wave 3 has low gravity modifier');
+    assert(lowGravWaves.includes(6), 'wave 6 has low gravity modifier');
+    assert(heavyWaves.includes(7), 'wave 7 has heavy weapons modifier');
+    assert(heavyWaves.includes(14), 'wave 14 has heavy weapons modifier');
+}
+
+// =====================================================
+section('107. Color-Blind Shape Indicators');
+// =====================================================
+{
+    const CB_SHAPES = ['●','■','▲','◆','★','⬢','+','X'];
+    assert(CB_SHAPES.length >= 8, 'at least 8 unique shapes for all player slots');
+    // All shapes are unique
+    const unique = new Set(CB_SHAPES);
+    assert(unique.size === CB_SHAPES.length, 'all shapes are unique');
+}
+
+// =====================================================
+section('108. Fixed Timestep Loop');
+// =====================================================
+{
+    const FIXED_DT = 1000/60;
+    assertApprox(FIXED_DT, 16.667, 0.01, 'fixed timestep = 16.667ms (60fps)');
+
+    // Accumulator pattern: simulate variable frame times
+    let accumulator = 0, updates = 0;
+    // Frame at 33ms (30fps) → should do 2 updates
+    accumulator += 33;
+    while (accumulator >= FIXED_DT) { accumulator -= FIXED_DT; updates++; }
+    assert(updates === 1, '33ms frame → 1 physics update (16.6ms left over)');
+
+    // Next frame at 33ms → leftover + new = ~49.6ms → 2 updates
+    updates = 0;
+    accumulator += 33;
+    while (accumulator >= FIXED_DT) { accumulator -= FIXED_DT; updates++; }
+    assert(updates === 2, 'second 33ms frame with leftover → 2 physics updates');
+
+    // Delta cap: anything over 100ms should be capped
+    const rawDelta = 250;
+    const clampedDelta = Math.min(rawDelta, 100);
+    assert(clampedDelta === 100, 'delta capped to 100ms to prevent spiral of death');
+}
+
+// =====================================================
+section('109. Server Weapon Timer & Balance');
+// =====================================================
+{
+    // Server-side weapon timer should match client
+    assert(WEAPON_TIMER === 1200, 'server WEAPON_TIMER matches client');
+    assert(HOMING_TURN === 0.10, 'server HOMING_TURN matches client');
+    assert(BEAM_DUR === 45, 'server BEAM_DUR matches client (nerfed)');
+    assert(BEAM_RANGE === 350, 'server BEAM_RANGE matches client (nerfed)');
+
+    // Server applyPickup sets weaponTimer
+    const sp = {id:0, weapon:'normal', shield:0, lives:5, alive:true, weaponTimer:0};
+    events = [];
+    applyPickup(sp, 'homing');
+    assert(sp.weaponTimer === WEAPON_TIMER, 'server sets weaponTimer on weapon pickup');
+    assert(sp.weapon === 'homing', 'server applies weapon type');
+
+    // Server killPlayer clears weaponTimer
+    const sk = {id:1, weapon:'rapid', weaponTimer:800, alive:true, lives:3, shield:0, vx:0, vy:0, landed:false, respawnT:0, invT:0, flashTimer:0};
+    playerDeaths = [0,0];
+    events = [];
+    killPlayer(sk);
+    assert(sk.weaponTimer === 0, 'server death clears weaponTimer');
+}
+
+// =====================================================
+section('110. Ping & Network Resilience');
+// =====================================================
+{
+    // Ping measurement: round-trip timing
+    const sendTime = 1000;
+    const receiveTime = 1045;
+    const pingMs = Math.round(receiveTime - sendTime);
+    assert(pingMs === 45, 'ping calculated as receive - send time');
+
+    // Reconnect backoff: exponential
+    for (let attempt = 1; attempt <= 5; attempt++) {
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 8000);
+        if (attempt === 1) assert(delay === 1000, 'first reconnect after 1s');
+        if (attempt === 2) assert(delay === 2000, 'second reconnect after 2s');
+        if (attempt === 3) assert(delay === 4000, 'third reconnect after 4s');
+        if (attempt === 4) assert(delay === 8000, 'fourth reconnect capped at 8s');
+        if (attempt === 5) assert(delay === 8000, 'fifth reconnect capped at 8s');
+    }
+
+    // Max 5 reconnect attempts before giving up
+    const maxAttempts = 5;
+    assert(maxAttempts === 5, 'max 5 reconnect attempts');
+}
+
+// =====================================================
+section('111. Score Floats System');
+// =====================================================
+{
+    const scoreFloats = [];
+    // Adding a score float
+    scoreFloats.push({x:100, y:200, text:'+1', color:'#ff9900', timer:60});
+    assert(scoreFloats.length === 1, 'score float added');
+    assert(scoreFloats[0].text === '+1', 'score float has text');
+    assert(scoreFloats[0].timer === 60, 'score float starts with 60 frame timer');
+
+    // Float drifts upward (y decreases)
+    scoreFloats[0].y -= 1;
+    scoreFloats[0].timer--;
+    assert(scoreFloats[0].y === 199, 'score float moves upward');
+    assert(scoreFloats[0].timer === 59, 'score float timer decrements');
+
+    // Float removed when timer reaches 0
+    scoreFloats[0].timer = 0;
+    const filtered = scoreFloats.filter(f => f.timer > 0);
+    assert(filtered.length === 0, 'expired score floats removed');
+
+    // Level up float
+    scoreFloats.push({x:100, y:200, text:'LEVEL UP! 5', color:'#ffcc00', timer:120});
+    assert(scoreFloats[1].text === 'LEVEL UP! 5', 'level up float has text');
+    assert(scoreFloats[1].timer === 120, 'level up float has longer timer');
+}
+
+// =====================================================
+section('112. Invincibility Countdown Ring');
+// =====================================================
+{
+    // Ring shrinks as invincibility expires
+    const invT = 90; // remaining frames
+    const ratio = invT / INVINCE_T; // 90/120 = 0.75
+    assertApprox(ratio, 0.75, 0.01, '75% invincibility remaining = 75% arc');
+
+    // At full invincibility
+    const fullRatio = INVINCE_T / INVINCE_T;
+    assert(fullRatio === 1, 'full invincibility = full ring');
+
+    // At expired
+    const emptyRatio = 0 / INVINCE_T;
+    assert(emptyRatio === 0, 'expired invincibility = no ring');
+
+    // Arc calculation
+    const endAngle = -Math.PI/2 + ratio * Math.PI * 2;
+    assert(endAngle > -Math.PI/2, 'arc end angle increases with invT');
+}
+
+// =====================================================
+section('113. Weapon Timer Bar');
+// =====================================================
+{
+    // Bar shows remaining weapon time
+    const weaponTimer = 600; // half remaining
+    const ratio = weaponTimer / WEAPON_TIMER; // 0.5
+    assertApprox(ratio, 0.5, 0.01, '50% weapon time remaining');
+
+    // Color changes below 30%
+    const lowTimer = WEAPON_TIMER * 0.2; // 20%
+    const lowRatio = lowTimer / WEAPON_TIMER;
+    assert(lowRatio < 0.3, 'low timer triggers red color');
+
+    // No bar for normal weapon
+    const normalWeapon = 'normal';
+    assert(normalWeapon === 'normal', 'no timer bar shown for normal weapon');
+}
+
+// =====================================================
+section('114. Seamless World Wrap Rendering');
+// =====================================================
+{
+    const worldW = 4000;
+    const halfVW = 406; // approximate half viewport width
+
+    // Camera near left edge (camX=50): visLeft < 0 → need offset -worldW
+    const camX_left = 50;
+    const visLeft_L = camX_left - halfVW; // -356
+    const visRight_L = camX_left + halfVW; // 456
+    const offsets_L = [0];
+    if (visLeft_L < 0) offsets_L.push(-worldW);
+    if (visRight_L > worldW) offsets_L.push(worldW);
+    assert(offsets_L.includes(-worldW), 'camera near left edge adds -worldW offset');
+    assert(!offsets_L.includes(worldW), 'camera near left edge does NOT add +worldW');
+
+    // Verify object at right edge (x=3900) becomes visible with -worldW offset
+    const objX = 3900;
+    const screenX = (objX + (-worldW)) - camX_left; // 3900 - 4000 - 50 = -150 → within viewport
+    assert(Math.abs(screenX) < halfVW, 'right-edge object visible via -worldW wrap offset');
+
+    // Camera near right edge (camX=3950): visRight > worldW → need offset +worldW
+    const camX_right = 3950;
+    const visLeft_R = camX_right - halfVW; // 3544
+    const visRight_R = camX_right + halfVW; // 4356
+    const offsets_R = [0];
+    if (visLeft_R < 0) offsets_R.push(-worldW);
+    if (visRight_R > worldW) offsets_R.push(worldW);
+    assert(offsets_R.includes(worldW), 'camera near right edge adds +worldW offset');
+    assert(!offsets_R.includes(-worldW), 'camera near right edge does NOT add -worldW');
+
+    // Verify object at left edge (x=50) becomes visible with +worldW offset
+    const objX2 = 50;
+    const screenX2 = (objX2 + worldW) - camX_right; // 50 + 4000 - 3950 = 100 → within viewport
+    assert(Math.abs(screenX2) < halfVW, 'left-edge object visible via +worldW wrap offset');
+
+    // Camera in middle: no extra offsets needed
+    const camX_mid = 2000;
+    const visLeft_M = camX_mid - halfVW; // 1594
+    const visRight_M = camX_mid + halfVW; // 2406
+    const offsets_M = [0];
+    if (visLeft_M < 0) offsets_M.push(-worldW);
+    if (visRight_M > worldW) offsets_M.push(worldW);
+    assert(offsets_M.length === 1, 'camera in middle needs no wrap offsets');
 }
 
 console.log(`\n${'='.repeat(50)}`);

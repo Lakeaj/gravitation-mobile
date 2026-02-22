@@ -29,7 +29,9 @@ const PICKUP_TYPES = [
     { id:'shield', weight:4 }, { id:'heart', weight:2 }
 ];
 const PICKUP_TOTAL_WEIGHT = PICKUP_TYPES.reduce((s,p) => s + p.weight, 0);
-const BEAM_DUR = 60, BEAM_CD = 54, BEAM_RANGE = 450, BEAM_HIT_INTERVAL = 8;
+const BEAM_DUR = 45, BEAM_CD = 54, BEAM_RANGE = 350, BEAM_HIT_INTERVAL = 8;
+const WEAPON_TIMER = 1200;
+const HOMING_TURN = 0.10;
 const STREAK_WINDOW = 240;
 const STREAK_NAMES = ['','','DOUBLE KILL','TRIPLE KILL','MULTI KILL','MEGA KILL','ULTRA KILL','MONSTER KILL'];
 const MAPS = {
@@ -54,10 +56,17 @@ function ptInRect(px, py, rx, ry, rw, rh) { return px >= rx && px <= rx + rw && 
 function rd(n) { return Math.round(n * 10) / 10; }
 function rdA(n) { return Math.round(n * 1000) / 1000; } // higher precision for angles
 function getTerrainYAt(x, arr) {
-    for (let i = 0; i < arr.length - 1; i++) {
-        if (x >= arr[i].x && x <= arr[i + 1].x) {
-            const f = (x - arr[i].x) / (arr[i + 1].x - arr[i].x);
-            return { y: arr[i].y + f * (arr[i + 1].y - arr[i].y), slope: Math.atan2(arr[i + 1].y - arr[i].y, arr[i + 1].x - arr[i].x) };
+    let lo = 0, hi = arr.length - 2;
+    while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (x < arr[mid].x) hi = mid - 1;
+        else if (x > arr[mid + 1].x) lo = mid + 1;
+        else {
+            const f = (x - arr[mid].x) / (arr[mid + 1].x - arr[mid].x);
+            return {
+                y: arr[mid].y + f * (arr[mid + 1].y - arr[mid].y),
+                slope: Math.atan2(arr[mid + 1].y - arr[mid].y, arr[mid + 1].x - arr[mid].x)
+            };
         }
     }
     return null;
@@ -405,7 +414,7 @@ class Room {
                 base: { x: bs.x, y: bs.y, w: bs.w || BASE_W, h: bs.h || BASE_H },
                 landed: true, landedTimer: 120,
                 disconnected: false,
-                weapon: 'normal', shield: 1,
+                weapon: 'normal', shield: 1, weaponTimer: 0, flashTimer: 0,
                 streak: 0, lastKillFrame: -999,
                 thrusting: false, revThrusting: false, firing: false, fireCd: 0
             });
@@ -490,6 +499,15 @@ class Room {
             if (p.x > this.worldW) p.x -= this.worldW;
             if (p.invT > 0) p.invT--;
             if (p.fireCd > 0) p.fireCd--;
+            if (p.flashTimer > 0) p.flashTimer--;
+            // Weapon timer countdown
+            if (p.weaponTimer > 0) {
+                p.weaponTimer--;
+                if (p.weaponTimer <= 0 && p.weapon !== 'normal') {
+                    p.weapon = 'normal';
+                    this.emitEvent({ t: 'e', n: 'weaponExpired', i: p.id });
+                }
+            }
 
             if (p.firing && p.fireCd <= 0) this.fireBullets(p, pi);
 
@@ -551,7 +569,7 @@ class Room {
                     if (hdx < -this.worldW / 2) hdx += this.worldW;
                     const hdy = nearest.y - b.y, ta = Math.atan2(hdy, hdx), ca = Math.atan2(b.vy, b.vx);
                     let ad = ta - ca; while (ad > Math.PI) ad -= Math.PI * 2; while (ad < -Math.PI) ad += Math.PI * 2;
-                    const na = ca + ad * 0.06, sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+                    const na = ca + ad * HOMING_TURN, sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
                     b.vx = Math.cos(na) * sp; b.vy = Math.sin(na) * sp;
                 }
             }
@@ -656,7 +674,8 @@ class Room {
                     x: rd(p.x), y: rd(p.y), vx: rd(p.vx), vy: rd(p.vy), a: rdA(p.angle),
                     al: p.alive, l: p.lives, s: p.score, iv: p.invT > 0,
                     th: p.thrusting, rv: p.revThrusting, la: p.landed, fi: p.firing,
-                    rT: p.respawnT, wp: p.weapon, sh: p.shield
+                    rT: p.respawnT, wp: p.weapon, sh: p.shield,
+                    wt: p.weaponTimer, ft: p.flashTimer
                 })),
                 b: this.bullets.map(b => ({
                     x: rd(b.x), y: rd(b.y), vx: rd(b.vx), vy: rd(b.vy),
@@ -738,7 +757,7 @@ class Room {
                 p.fireCd = Math.floor(FIRE_CD * 1.1); break;
             default:
                 this.bullets.push({ x: bx, y: by, vx: Math.cos(a) * BULLET_SPD + vbx, vy: Math.sin(a) * BULLET_SPD + vby, owner: pi, life: BULLET_LIFE, color: p.color, sz: 2.5 });
-                p.fireCd = FIRE_CD;
+                p.fireCd = Math.floor(FIRE_CD / 1.5); // stock fires 1.5x faster (9 frames vs powerup base 14)
         }
         this.emitEvent({ t: 'e', n: 'shoot', x: bx, y: by });
     }
@@ -747,13 +766,14 @@ class Room {
         if (!p.alive || p.invT > 0) return;
         if (p.shield > 0 && !force) {
             p.shield--;
-            p.invT = 30;
+            p.invT = 1; // ~10ms grace (1 frame at 60fps)
+            p.flashTimer = 12;
             this.emitEvent({ t: 'e', n: 'shieldHit', x: p.x, y: p.y });
             return;
         }
         p.alive = false; p.lives--; p.respawnT = RESPAWN_T; p.vx = 0; p.vy = 0; p.landed = false;
         if (this.playerDeaths[p.id] !== undefined) this.playerDeaths[p.id]++;
-        p.weapon = 'normal'; p.shield = 0;
+        p.weapon = 'normal'; p.shield = 0; p.weaponTimer = 0;
         this.emitEvent({ t: 'e', n: 'kill', i: p.id, x: p.x, y: p.y });
         this.checkGameEnd();
     }
@@ -839,7 +859,7 @@ class Room {
     applyPickup(p, type) {
         if (type === 'heart') { p.lives = (p.lives || 0) + 1; }
         else if (type === 'shield') { p.shield = (p.shield || 0) + 1; }
-        else { p.weapon = type; }
+        else { p.weapon = type; p.weaponTimer = WEAPON_TIMER; }
         this.emitEvent({ t: 'e', n: 'pickup', i: p.id, x: p.x, y: p.y });
     }
 
@@ -991,6 +1011,10 @@ wss.on('connection', (ws) => {
                 const room = rooms.get(code);
                 if (room) room.removePlayer(ws);
                 wsRoomMap.delete(ws);
+                break;
+            }
+            case 'ping': {
+                ws.send(JSON.stringify({ t: 'pong' }));
                 break;
             }
         }

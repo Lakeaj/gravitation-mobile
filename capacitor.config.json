@@ -1,0 +1,37 @@
+{
+  "appId": "com.lakesgames.gravitation",
+  "appName": "Gravitation Mobile",
+  "webDir": ".",
+  "bundledWebRuntime": false,
+  "server": {
+    "url": "",
+    "cleartext": true
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500,
+      "backgroundColor": "#0a0a1a",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_CROP"
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0a0a1a"
+    },
+    "Keyboard": {
+      "resize": "none"
+    },
+    "Haptics": {
+      "enabled": true
+    }
+  },
+  "android": {
+    "allowMixedContent": true,
+    "backgroundColor": "#0a0a1a",
+    "webContentsDebuggingEnabled": false
+  },
+  "ios": {
+    "backgroundColor": "#0a0a1a",
+    "contentInset": "always"
+  }
+}
