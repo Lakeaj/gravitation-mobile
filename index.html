@@ -216,6 +216,8 @@ let playerInputs = [];
 let stateBuffer = []; // [{time, state}] for smooth remote player rendering
 const INTERP_DELAY = 80; // ms behind real time for remote players
 const CORRECTION_RATE = 0.2; // blend rate toward server truth for local player
+let lastStateTime = 0; // tracks when we last got new server state
+let inputFrame = 0; // throttle input sending
 let screenShake = 0;
 let camAngle = -Math.PI/2; // smoothed camera rotation (ship-up view)
 let spectatingIdx = -1;
@@ -1583,9 +1585,10 @@ function clientUpdate() {
     frame++;
     const now = performance.now();
 
-    // Send input to server via WebSocket
+    // Send input to server via WebSocket (throttled to 30Hz — server ticks at 30Hz)
     const li = getLocalInput();
-    if (ws && ws.readyState === WebSocket.OPEN) {
+    inputFrame++;
+    if (ws && ws.readyState === WebSocket.OPEN && (inputFrame & 1) === 0) {
         ws.send(JSON.stringify({t:'i', r:li.rot, th:li.thrust, rv:li.revThrust, f:li.fire}));
     }
 
@@ -1682,17 +1685,24 @@ function clientUpdate() {
         if (me.x < 0) me.x += worldW; if (me.x > worldW) me.x -= worldW;
     }
 
-    // Bullets, beams, pickups, base explosions from latest server state
+    // Bullets, beams, pickups, base explosions — only rebuild when NEW state arrives
     const gs = latest ? latest.state : null;
-    if (gs) {
+    if (gs && latest.time !== lastStateTime) {
+        lastStateTime = latest.time;
         bullets = (gs.b||[]).map(b=>({x:b.x,y:b.y,vx:b.vx,vy:b.vy,owner:b.o,color:b.c,sz:b.sz||2.5}));
         beams = (gs.bm||[]).map(bm=>({x:bm.x,y:bm.y,angle:bm.a,owner:bm.o,color:bm.c,endDist:bm.ed,life:bm.l,maxLife:bm.ml}));
         baseExps = (gs.be||[]).map(e=>({x:e.x,y:e.y,t:e.t,dur:e.d,owner:e.o,phase:e.p,r:BASE_EXP_R}));
         pickups = (gs.pk||[]).map(pk=>({x:pk.x,y:pk.y,type:pk.tp,bobPhase:pk.bp}));
+    } else {
+        // Between server updates: move bullets locally so they don't freeze in place
+        for (const b of bullets) { b.x += b.vx; b.y += b.vy; }
     }
 
-    // Prune old state buffer (keep last 1s)
-    while (stateBuffer.length > 0 && stateBuffer[0].time < now - 1000) stateBuffer.shift();
+    // Prune old state buffer (keep last 1s) — trim from front efficiently
+    const pruneTime = now - 1000;
+    let pruneIdx = 0;
+    while (pruneIdx < stateBuffer.length && stateBuffer[pruneIdx].time < pruneTime) pruneIdx++;
+    if (pruneIdx > 0) stateBuffer.splice(0, pruneIdx);
 
     // Local effects
     // Thrust particles for all thrusting players
