@@ -1,0 +1,13 @@
+{
+  "name": "gravitation-server",
+  "version": "2.2.0",
+  "description": "Dedicated WebSocket server for Gravitation Mobile",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}
