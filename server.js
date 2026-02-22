@@ -52,6 +52,7 @@ function dist(x1, y1, x2, y2, wW) {
 }
 function ptInRect(px, py, rx, ry, rw, rh) { return px >= rx && px <= rx + rw && py >= ry && py <= ry + rh; }
 function rd(n) { return Math.round(n * 10) / 10; }
+function rdA(n) { return Math.round(n * 1000) / 1000; } // higher precision for angles
 function getTerrainYAt(x, arr) {
     for (let i = 0; i < arr.length - 1; i++) {
         if (x >= arr[i].x && x <= arr[i + 1].x) {
@@ -597,7 +598,7 @@ class Room {
                 t: 's',
                 f: this.frame,
                 p: this.players.map(p => ({
-                    x: rd(p.x), y: rd(p.y), vx: rd(p.vx), vy: rd(p.vy), a: rd(p.angle),
+                    x: rd(p.x), y: rd(p.y), vx: rd(p.vx), vy: rd(p.vy), a: rdA(p.angle),
                     al: p.alive, l: p.lives, s: p.score, iv: p.invT > 0,
                     th: p.thrusting, rv: p.revThrusting, la: p.landed, fi: p.firing,
                     rT: p.respawnT, wp: p.weapon, sh: p.shield
@@ -607,7 +608,7 @@ class Room {
                     o: b.owner, c: b.color, sz: b.sz || 2.5
                 })),
                 bm: this.beams.map(bm => ({
-                    x: rd(bm.x), y: rd(bm.y), a: rd(bm.angle), o: bm.owner,
+                    x: rd(bm.x), y: rd(bm.y), a: rdA(bm.angle), o: bm.owner,
                     c: bm.color, ed: rd(bm.endDist || BEAM_RANGE), l: bm.life, ml: bm.maxLife
                 })),
                 be: this.baseExps.map(e => ({

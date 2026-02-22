@@ -1496,7 +1496,14 @@ function clientUpdate() {
         if (li.thrust) { me.vx += Math.cos(me.angle)*THRUST; me.vy += Math.sin(me.angle)*THRUST; me.thrusting = true; } else { me.thrusting = false; }
         if (li.revThrust) { me.vx -= Math.cos(me.angle)*REV_THRUST; me.vy -= Math.sin(me.angle)*REV_THRUST; me.revThrusting = true; } else { me.revThrusting = false; }
         me.vy += mapGrav;
-        me.vx *= 0.999; me.vy *= 0.999;
+        me.vx *= 0.997; me.vy *= 0.997;
+        // Auto-stabilize rotation (must match server)
+        if (Math.abs(li.rot) < 0.1) {
+            let uprightDiff = (-Math.PI/2) - me.angle;
+            while (uprightDiff > Math.PI) uprightDiff -= Math.PI*2;
+            while (uprightDiff < -Math.PI) uprightDiff += Math.PI*2;
+            me.angle += uprightDiff * 0.008;
+        }
         const spd = Math.sqrt(me.vx*me.vx + me.vy*me.vy);
         if (spd > MAX_SPD) { me.vx *= MAX_SPD/spd; me.vy *= MAX_SPD/spd; }
         me.x += me.vx; me.y += me.vy;
@@ -1565,6 +1572,11 @@ function clientUpdate() {
         let dx = sp.x - me.x; if (dx > worldW/2) dx -= worldW; if (dx < -worldW/2) dx += worldW;
         me.x += dx * CORRECTION_RATE; me.y += (sp.y - me.y) * CORRECTION_RATE;
         me.vx += (sp.vx - me.vx) * CORRECTION_RATE; me.vy += (sp.vy - me.vy) * CORRECTION_RATE;
+        // Correct angle (shortest-path lerp)
+        let angleDiff = sp.a - me.angle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI*2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI*2;
+        me.angle += angleDiff * CORRECTION_RATE;
         me.alive = sp.al; me.lives = sp.l; me.score = sp.s; me.invT = sp.iv ? 1 : 0;
         me.respawnT = sp.rT; me.weapon = sp.wp || 'normal'; me.shield = sp.sh || 0; me.landed = sp.la;
         if (me.x < 0) me.x += worldW; if (me.x >= worldW) me.x -= worldW;
