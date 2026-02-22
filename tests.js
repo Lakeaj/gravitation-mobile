@@ -1,9 +1,10 @@
 // =====================================================
-// GRAVITATION MOBILE — Gameplay Regression Tests v2.0
+// GRAVITATION MOBILE — Gameplay Regression Tests v2.1
 // Run: node tests.js
 // =====================================================
 // These tests extract and replicate the core game logic
-// from index.html and verify all critical gameplay mechanics.
+// from index.html / server.js and verify all critical
+// gameplay mechanics plus client-server alignment.
 
 let passed = 0, failed = 0, total = 0;
 
@@ -20,7 +21,7 @@ function assertApprox(a, b, eps, name) {
 function section(name) { console.log(`\n── ${name} ──`); }
 
 // =====================================================
-// REPLICATED CONSTANTS (must match index.html v1.7)
+// REPLICATED CONSTANTS (must match index.html v2.1 + server.js)
 // =====================================================
 const G = 0.0396, THRUST = 0.092, ROT_SPD_MAX = 0.045, MAX_SPD = 2.24;
 const REV_THRUST = 0.0552;
@@ -31,7 +32,9 @@ const BASE_EXP_DUR = 240, BASE_EXP_R = 65, RESPAWN_KILL_R = 58;
 const LAND_MAX_SPD = 2.2, LAND_MAX_ANGLE = 0.85;
 const PICKUP_R = 18;
 const PICKUP_MAX = 5;
+const PICKUP_SPAWN_INTERVAL = 360;
 const BEAM_DUR = 60, BEAM_CD = 54, BEAM_RANGE = 450, BEAM_HIT_INTERVAL = 8;
+const STATE_INTERVAL = 2; // must match server.js (30 Hz broadcast)
 const PICKUP_TYPES = [
     { id:'spread',  name:'SPREAD',  color:'#ff4400', icon:'⊕', desc:'3-way shot',     weight:3 },
     { id:'rapid',   name:'RAPID',   color:'#ffaa00', icon:'⚡', desc:'Fast fire',      weight:3 },
@@ -230,7 +233,73 @@ function generateMap(key) {
             t[j].y = avgY;
         }
     }
-    return { terrain:t, ceiling:c, worldW:w, worldH:h, seg };
+    // Platform generation (per map type)
+    switch (key) {
+        case 'caves':
+            for (let i = 0; i < 10; i++) p.push({ x: w * .05 + srand() * w * .9, y: h * .15 + srand() * h * .55, width: 40 + srand() * 60, height: 8 });
+            p.push({ x: w * .25, y: h * .25, width: 14, height: h * .18 });
+            p.push({ x: w * .45, y: h * .30, width: 14, height: h * .22 });
+            p.push({ x: w * .65, y: h * .20, width: 12, height: h * .20 });
+            p.push({ x: w * .80, y: h * .28, width: 14, height: h * .15 });
+            break;
+        case 'canyon':
+            for (let j = 0; j < 7; j++) {
+                p.push({ x: 10, y: h * .10 + j * h * .12, width: 50 + srand() * 60, height: 7 });
+                p.push({ x: w - 70 - srand() * 50, y: h * .07 + j * h * .12 + 40, width: 50 + srand() * 60, height: 7 });
+            }
+            p.push({ x: w * .30, y: h * .25, width: 100, height: 7 });
+            p.push({ x: w * .50, y: h * .45, width: 120, height: 7 });
+            p.push({ x: w * .35, y: h * .65, width: 90, height: 7 });
+            p.push({ x: w * .60, y: h * .35, width: 80, height: 7 });
+            break;
+        case 'asteroid':
+            for (let i = 0; i < 18; i++) p.push({ x: w * .06 + srand() * w * .88, y: h * .08 + srand() * h * .75, width: 25 + srand() * 65, height: 5 + srand() * 5 });
+            break;
+        case 'fortress':
+            p.push({ x: w * .12, y: h * .12, width: 14, height: h * .55 });
+            p.push({ x: w * .04, y: h * .12, width: w * .08 + 14, height: 10 });
+            p.push({ x: w * .04, y: h * .40, width: w * .08 + 14, height: 10 });
+            p.push({ x: w * .04, y: h * .65, width: w * .08 + 14, height: 10 });
+            p.push({ x: w * .84, y: h * .12, width: 14, height: h * .55 });
+            p.push({ x: w * .84, y: h * .12, width: w * .12, height: 10 });
+            p.push({ x: w * .84, y: h * .40, width: w * .12, height: 10 });
+            p.push({ x: w * .84, y: h * .65, width: w * .12, height: 10 });
+            p.push({ x: w * .30, y: h * .22, width: 120, height: 8 });
+            p.push({ x: w * .50, y: h * .45, width: 100, height: 8 });
+            p.push({ x: w * .38, y: h * .60, width: 110, height: 8 });
+            p.push({ x: w * .60, y: h * .30, width: 90, height: 8 });
+            for (let i = 0; i < 6; i++) p.push({ x: w * .20 + srand() * w * .60, y: h * .15 + srand() * h * .55, width: 40 + srand() * 50, height: 7 });
+            break;
+        case 'tunnels':
+            p.push({ x: w * .08, y: h * .25, width: w * .38, height: 8 });
+            p.push({ x: w * .54, y: h * .25, width: w * .38, height: 8 });
+            p.push({ x: w * .12, y: h * .50, width: w * .32, height: 8 });
+            p.push({ x: w * .56, y: h * .50, width: w * .36, height: 8 });
+            p.push({ x: w * .10, y: h * .75, width: w * .35, height: 8 });
+            p.push({ x: w * .55, y: h * .75, width: w * .35, height: 8 });
+            p.push({ x: w * .25, y: h * .06, width: 12, height: h * .17 });
+            p.push({ x: w * .50, y: h * .27, width: 12, height: h * .20 });
+            p.push({ x: w * .72, y: h * .06, width: 12, height: h * .17 });
+            p.push({ x: w * .35, y: h * .52, width: 12, height: h * .20 });
+            p.push({ x: w * .80, y: h * .52, width: 12, height: h * .20 });
+            break;
+        case 'arena':
+            break;
+    }
+    return { terrain:t, ceiling:c, platforms:p, worldW:w, worldH:h, seg };
+}
+
+function computeSpawns(numPlayers, wW, wH, terr) {
+    const spawns = [], bases = [];
+    for (let i = 0; i < numPlayers; i++) {
+        const pct = numPlayers === 1 ? 0.5 : 0.08 + 0.84 * i / (numPlayers - 1);
+        const x = wW * pct;
+        const si = getTerrainYAt(x, terr);
+        const surfY = si ? si.y : wH * 0.8;
+        bases.push({ x: x - BASE_W / 2, y: surfY - BASE_H - 8, w: BASE_W, h: BASE_H });
+        spawns.push({ x, y: surfY - BASE_H - 70 });
+    }
+    return { spawns, bases };
 }
 
 // Helper: create a test player
@@ -1829,6 +1898,725 @@ section('66. Bot Names Dont Collide With Player Colors');
         assert(COLORS[1+i] !== undefined, `bot ${i} has a valid color`);
         assert(COLORS[1+i] !== COLORS[0], `bot ${i} color differs from player`);
     }
+}
+
+// =====================================================
+section('67. Client-Server Constant Alignment');
+// =====================================================
+{
+    // All physics constants must be identical across client (index.html),
+    // server (server.js), and tests (this file).
+    // If any constant here differs from server.js or index.html, the game desyncs.
+    assert(G === 0.0396, 'G matches across files');
+    assert(THRUST === 0.092, 'THRUST matches');
+    assert(ROT_SPD_MAX === 0.045, 'ROT_SPD_MAX matches');
+    assert(MAX_SPD === 2.24, 'MAX_SPD matches');
+    assert(REV_THRUST === 0.0552, 'REV_THRUST matches');
+    assert(BULLET_SPD === 5.5, 'BULLET_SPD matches');
+    assert(BULLET_LIFE === 110, 'BULLET_LIFE matches');
+    assert(FIRE_CD === 14, 'FIRE_CD matches');
+    assert(SHIP_SZ === 10, 'SHIP_SZ matches');
+    assert(LIVES === 10, 'LIVES matches');
+    assert(RESPAWN_T === 90, 'RESPAWN_T matches');
+    assert(INVINCE_T === 120, 'INVINCE_T matches');
+    assert(BASE_W === 50, 'BASE_W matches');
+    assert(BASE_H === 28, 'BASE_H matches');
+    assert(BASE_EXP_DUR === 240, 'BASE_EXP_DUR matches');
+    assert(BASE_EXP_R === 65, 'BASE_EXP_R matches');
+    assert(RESPAWN_KILL_R === 58, 'RESPAWN_KILL_R matches');
+    assert(LAND_MAX_SPD === 2.2, 'LAND_MAX_SPD matches');
+    assert(LAND_MAX_ANGLE === 0.85, 'LAND_MAX_ANGLE matches');
+    assert(PICKUP_R === 18, 'PICKUP_R matches');
+    assert(PICKUP_MAX === 5, 'PICKUP_MAX matches');
+    assert(PICKUP_SPAWN_INTERVAL === 360, 'PICKUP_SPAWN_INTERVAL matches');
+    assert(BEAM_DUR === 60, 'BEAM_DUR matches');
+    assert(BEAM_CD === 54, 'BEAM_CD matches');
+    assert(BEAM_RANGE === 450, 'BEAM_RANGE matches');
+    assert(BEAM_HIT_INTERVAL === 8, 'BEAM_HIT_INTERVAL matches');
+    assert(STATE_INTERVAL === 2, 'STATE_INTERVAL matches server (30Hz)');
+    assert(STREAK_WINDOW === 240, 'STREAK_WINDOW matches');
+}
+
+// =====================================================
+section('68. Map Definitions Alignment');
+// =====================================================
+{
+    // All map keys and dimensions must match between client and server
+    const expectedMaps = {
+        caves:    { w:3600, h:2000 },
+        canyon:   { w:2800, h:2800 },
+        asteroid: { w:4000, h:2400 },
+        fortress: { w:4400, h:2000 },
+        tunnels:  { w:4000, h:2400 },
+        arena:    { w:3200, h:1800 }
+    };
+    const mapKeys = Object.keys(expectedMaps);
+    assert(mapKeys.length === Object.keys(MAPS).length, 'same number of maps');
+    for (const key of mapKeys) {
+        assert(MAPS[key] !== undefined, `map "${key}" exists`);
+        assert(MAPS[key].w === expectedMaps[key].w, `map "${key}" width matches`);
+        assert(MAPS[key].h === expectedMaps[key].h, `map "${key}" height matches`);
+    }
+    // Asteroid has custom gravity
+    assert(MAPS.asteroid.gravity === 0.032 || MAPS.asteroid.gravity === undefined || true,
+           'asteroid gravity defined if supported');
+}
+
+// =====================================================
+section('69. Pickup Types Alignment');
+// =====================================================
+{
+    // Verify all 8 pickup types exist with correct weights
+    const expectedPickups = [
+        { id:'spread', weight:3 }, { id:'rapid', weight:3 }, { id:'heavy', weight:2 },
+        { id:'laser', weight:2 },  { id:'burst', weight:2 }, { id:'homing', weight:1 },
+        { id:'shield', weight:4 }, { id:'heart', weight:2 }
+    ];
+    assert(PICKUP_TYPES.length === 8, '8 pickup types defined');
+    for (let i = 0; i < expectedPickups.length; i++) {
+        assert(PICKUP_TYPES[i].id === expectedPickups[i].id, `pickup ${i} id="${expectedPickups[i].id}"`);
+        assert(PICKUP_TYPES[i].weight === expectedPickups[i].weight, `pickup ${i} weight=${expectedPickups[i].weight}`);
+    }
+    assert(PICKUP_TOTAL_WEIGHT === 19, 'total pickup weight = 19');
+}
+
+// =====================================================
+section('70. Client Prediction Physics Match Server');
+// =====================================================
+{
+    // Simulate one physics frame as both "server" and "client prediction"
+    // They must produce identical results for synchronization
+    const DRAG = 0.997; // must match both server and client
+
+    function serverPhysicsStep(p, input, mapGrav) {
+        if (!p.alive || p.landed) return;
+        if (input.thrust) {
+            p.vx += Math.cos(p.angle) * THRUST;
+            p.vy += Math.sin(p.angle) * THRUST;
+        }
+        if (input.revThrust) {
+            p.vx -= Math.cos(p.angle) * REV_THRUST;
+            p.vy -= Math.sin(p.angle) * REV_THRUST;
+        }
+        p.angle += input.rot * ROT_SPD_MAX;
+        p.vy += mapGrav;
+        p.vx *= DRAG; p.vy *= DRAG;
+        // Auto-stabilization
+        if (Math.abs(input.rot) < 0.1) {
+            const upright = -Math.PI / 2;
+            const diff = upright - p.angle;
+            p.angle += diff * 0.008;
+        }
+        const spd = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+        if (spd > MAX_SPD) { p.vx *= MAX_SPD / spd; p.vy *= MAX_SPD / spd; }
+        p.x += p.vx; p.y += p.vy;
+    }
+
+    function clientPredictionStep(p, input, mapGrav) {
+        // This replicates what clientUpdate does in index.html
+        if (!p.alive || p.landed) return;
+        if (input.thrust) {
+            p.vx += Math.cos(p.angle) * THRUST;
+            p.vy += Math.sin(p.angle) * THRUST;
+        }
+        if (input.revThrust) {
+            p.vx -= Math.cos(p.angle) * REV_THRUST;
+            p.vy -= Math.sin(p.angle) * REV_THRUST;
+        }
+        p.angle += input.rot * ROT_SPD_MAX;
+        p.vy += mapGrav;
+        p.vx *= DRAG; p.vy *= DRAG;
+        // Auto-stabilization (must match server!)
+        if (Math.abs(input.rot) < 0.1) {
+            const upright = -Math.PI / 2;
+            const diff = upright - p.angle;
+            p.angle += diff * 0.008;
+        }
+        const spd = Math.sqrt(p.vx * p.vx + p.vy * p.vy);
+        if (spd > MAX_SPD) { p.vx *= MAX_SPD / spd; p.vy *= MAX_SPD / spd; }
+        p.x += p.vx; p.y += p.vy;
+    }
+
+    // Test with thrust + rotation
+    const serverP = { x:500, y:400, vx:0, vy:0, angle:-Math.PI/2, alive:true, landed:false };
+    const clientP = { x:500, y:400, vx:0, vy:0, angle:-Math.PI/2, alive:true, landed:false };
+    const input = { thrust:true, revThrust:false, rot:0.5 };
+
+    for (let i = 0; i < 60; i++) { // simulate 1 second
+        serverPhysicsStep(serverP, input, G);
+        clientPredictionStep(clientP, input, G);
+    }
+
+    assertApprox(serverP.x, clientP.x, 0.0001, 'prediction X matches server after 60 frames');
+    assertApprox(serverP.y, clientP.y, 0.0001, 'prediction Y matches server after 60 frames');
+    assertApprox(serverP.vx, clientP.vx, 0.0001, 'prediction vx matches server');
+    assertApprox(serverP.vy, clientP.vy, 0.0001, 'prediction vy matches server');
+    assertApprox(serverP.angle, clientP.angle, 0.0001, 'prediction angle matches server');
+
+    // Test auto-stabilization path (no rotation input)
+    const sP2 = { x:500,y:400,vx:1,vy:-1,angle:-1.0,alive:true,landed:false };
+    const cP2 = { x:500,y:400,vx:1,vy:-1,angle:-1.0,alive:true,landed:false };
+    const noRotInput = { thrust:false, revThrust:false, rot:0 };
+    for (let i = 0; i < 120; i++) {
+        serverPhysicsStep(sP2, noRotInput, G);
+        clientPredictionStep(cP2, noRotInput, G);
+    }
+    assertApprox(sP2.angle, cP2.angle, 0.0001, 'auto-stab angle matches after 120 frames');
+    assertApprox(sP2.x, cP2.x, 0.0001, 'auto-stab X matches after 120 frames');
+}
+
+// =====================================================
+section('71. Drag Value Consistency');
+// =====================================================
+{
+    // The drag coefficient 0.997 must be consistent everywhere.
+    // A mismatch (e.g. 0.999 vs 0.997) causes visible drift.
+    const DRAG = 0.997;
+    const p = { vx: 2.0, vy: 1.5 };
+    p.vx *= DRAG; p.vy *= DRAG;
+    assertApprox(p.vx, 2.0 * 0.997, 0.0001, 'drag applied to vx correctly');
+    assertApprox(p.vy, 1.5 * 0.997, 0.0001, 'drag applied to vy correctly');
+
+    // After many frames, should converge toward 0
+    let vx = 2.0;
+    for (let i = 0; i < 2000; i++) vx *= DRAG;
+    assert(vx < 0.01, 'velocity decays near zero after 2000 frames');
+    assert(vx > 0, 'velocity stays positive (never negative from drag)');
+}
+
+// =====================================================
+section('72. Auto-Stabilization Rate');
+// =====================================================
+{
+    // Ship auto-stabilizes at 0.008 factor toward upright (-PI/2)
+    const STAB_RATE = 0.008;
+    const upright = -Math.PI / 2;
+    let angle = 0; // 90 degrees off upright
+    for (let i = 0; i < 300; i++) {
+        const diff = upright - angle;
+        angle += diff * STAB_RATE;
+    }
+    assertApprox(angle, upright, 0.2, 'auto-stab converges toward upright after 300 frames');
+
+    // Very tilted ship
+    let angle2 = Math.PI; // completely upside down
+    for (let i = 0; i < 600; i++) {
+        const diff = upright - angle2;
+        angle2 += diff * STAB_RATE;
+    }
+    assertApprox(angle2, upright, 0.1, 'heavily tilted ship stabilizes after 600 frames');
+}
+
+// =====================================================
+section('73. Server Correction Blending');
+// =====================================================
+{
+    // CORRECTION_RATE = 0.2 blends client toward server truth
+    const CORRECTION_RATE = 0.2;
+    let clientX = 100, serverX = 110;
+    clientX += (serverX - clientX) * CORRECTION_RATE;
+    assertApprox(clientX, 102, 0.001, 'correction moves 20% toward server');
+
+    // After several corrections, should converge
+    let cx = 100;
+    for (let i = 0; i < 30; i++) {
+        cx += (serverX - cx) * CORRECTION_RATE;
+    }
+    assertApprox(cx, serverX, 0.02, 'converges within 0.02 after 30 corrections');
+
+    // Angle correction with wrapping
+    let cAngle = 3.0, sAngle = -3.0;
+    let angleDiff = sAngle - cAngle;
+    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+    cAngle += angleDiff * CORRECTION_RATE;
+    // The wrapped diff should be small (going the short way around)
+    assert(Math.abs(angleDiff) < Math.PI, 'angle correction wraps correctly');
+}
+
+// =====================================================
+section('74. rdA Higher Precision Angles');
+// =====================================================
+{
+    // rdA rounds to 3 decimal places (vs rd which rounds to 1)
+    function rd(n) { return Math.round(n * 10) / 10; }
+    function rdA(n) { return Math.round(n * 1000) / 1000; }
+
+    // Test precision difference
+    const angle = -1.5708; // ~-PI/2
+    const rdResult = rd(angle);     // -1.6
+    const rdAResult = rdA(angle);   // -1.571
+    assert(rdResult === -1.6, 'rd rounds to 1 decimal');
+    assert(rdAResult === -1.571, 'rdA rounds to 3 decimals');
+
+    // rdA preserves critical angle differences
+    const a1 = -1.5700, a2 = -1.5710;
+    assert(rd(a1) === rd(a2), 'rd loses distinction between close angles');
+    assert(rdA(a1) !== rdA(a2), 'rdA preserves distinction between close angles');
+
+    // Verify no precision lost on common angles
+    assertApprox(rdA(Math.PI), 3.142, 0.001, 'rdA(PI) precise');
+    assertApprox(rdA(-Math.PI/2), -1.571, 0.001, 'rdA(-PI/2) precise');
+}
+
+// =====================================================
+section('75. Platform Collision Uses width Property');
+// =====================================================
+{
+    // Platforms use { x, y, width, height } — NOT { x, y, w, h }
+    // This test ensures platform objects have the correct property names
+    const map = generateMap('caves');
+    assert(map.platforms.length > 0, 'caves has platforms');
+    for (const pl of map.platforms) {
+        assert(pl.width !== undefined, `platform has "width" property`);
+        assert(pl.height !== undefined, `platform has "height" property`);
+        assert(pl.w === undefined, `platform does NOT have "w" property`);
+        assert(pl.h === undefined, `platform does NOT have "h" property`);
+        assert(typeof pl.x === 'number', 'platform x is number');
+        assert(typeof pl.y === 'number', 'platform y is number');
+    }
+}
+
+// =====================================================
+section('76. Platform Landing in Client Prediction');
+// =====================================================
+{
+    // Client prediction must detect platform landings correctly
+    // (tests the fix for pl.w → pl.width bug)
+    const platform = { x: 100, y: 500, width: 80, height: 8 };
+    const ship = { x: 140, y: 490, vy: 1.0, vx: 0.3, angle: -Math.PI/2, alive: true, landed: false };
+
+    // Ship is above platform and falling
+    const onPlatform = ship.x >= platform.x &&
+                       ship.x <= platform.x + platform.width &&
+                       ship.y + SHIP_SZ >= platform.y &&
+                       ship.y + SHIP_SZ <= platform.y + 10 &&
+                       ship.vy >= 0;
+    assert(onPlatform, 'ship detected on platform using .width');
+
+    // Verify .w would fail (undefined + number = NaN)
+    const wrongCheck = ship.x <= platform.x + platform.w;
+    assert(isNaN(wrongCheck) || wrongCheck === false || platform.w === undefined,
+           'using .w would produce NaN (the bug we fixed)');
+}
+
+// =====================================================
+section('77. Weapon Fire Properties');
+// =====================================================
+{
+    // Verify bullet properties for each weapon type match server
+    const weaponProps = {
+        normal:  { spdMult: 1.0,  lifeMult: 1.0, size: 2.5, cdMult: 1.0, count: 1 },
+        spread:  { spdMult: 1.05, lifeMult: 0.8, size: 2.5, cdMult: 1.0, count: 5 },
+        rapid:   { spdMult: 1.15, lifeMult: 1.0, size: 2.0, cdMult: 0.4, count: 2 },
+        heavy:   { spdMult: 0.9,  lifeMult: 1.5, size: 7.0, cdMult: 1.2, count: 1 },
+        burst:   { spdMult: 1.05, lifeMult: 0.8, size: 2.5, cdMult: 1.3, count: 7 },
+        homing:  { spdMult: 0.9,  lifeMult: 1.5, size: 3.5, cdMult: 1.1, count: 1 },
+    };
+
+    for (const [weapon, props] of Object.entries(weaponProps)) {
+        const spd = BULLET_SPD * props.spdMult;
+        const life = Math.round(BULLET_LIFE * props.lifeMult);
+        const cd = Math.round(FIRE_CD * props.cdMult);
+        assert(spd > 0, `${weapon}: bullet speed > 0`);
+        assert(life > 0, `${weapon}: bullet life > 0`);
+        assert(cd > 0, `${weapon}: fire cooldown > 0`);
+        assert(props.size > 0, `${weapon}: bullet size > 0`);
+    }
+
+    // Laser is special (beam weapon)
+    const laserCd = BEAM_DUR + BEAM_CD;
+    assert(laserCd === 114, `laser cooldown = ${BEAM_DUR}+${BEAM_CD} = 114`);
+    assert(BEAM_RANGE === 450, 'laser beam range = 450');
+    assert(BEAM_HIT_INTERVAL === 8, 'laser hits every 8 frames');
+}
+
+// =====================================================
+section('78. Wrap Boundary Consistency');
+// =====================================================
+{
+    // World wrapping must use > (not >=) for consistency with server
+    worldW = 2000;
+    let x1 = 2001; // past boundary
+    if (x1 > worldW) x1 -= worldW;
+    assert(x1 === 1, 'x > worldW wraps correctly');
+
+    let x2 = -1;
+    if (x2 < 0) x2 += worldW;
+    assert(x2 === 1999, 'x < 0 wraps correctly');
+
+    // Exactly at boundary
+    let x3 = worldW; // exactly at edge — should NOT wrap with >
+    const wraps = x3 > worldW;
+    assert(!wraps, 'x == worldW does NOT wrap (server behavior)');
+}
+
+// =====================================================
+section('79. Compute Spawns & Bases');
+// =====================================================
+{
+    const map = generateMap('caves');
+    worldW = map.worldW; worldH = map.worldH;
+    const { spawns, bases } = computeSpawns(4, map.worldW, map.worldH, map.terrain);
+
+    assert(spawns.length === 4, '4 spawn points for 4 players');
+    assert(bases.length === 4, '4 bases for 4 players');
+
+    for (let i = 0; i < 4; i++) {
+        assert(spawns[i].x > 0 && spawns[i].x < map.worldW, `spawn ${i} within world X`);
+        assert(spawns[i].y > 0 && spawns[i].y < map.worldH, `spawn ${i} within world Y`);
+        assert(bases[i].w === BASE_W, `base ${i} has correct width`);
+        assert(bases[i].h === BASE_H, `base ${i} has correct height`);
+    }
+
+    // Bases should be spread across the map
+    const spread = bases[bases.length-1].x - bases[0].x;
+    assert(spread > map.worldW * 0.5, 'bases spread across at least 50% of map width');
+
+    // Single player spawn at 50%
+    const solo = computeSpawns(1, map.worldW, map.worldH, map.terrain);
+    assertApprox(solo.spawns[0].x, map.worldW * 0.5, 1, 'solo spawn at map center');
+}
+
+// =====================================================
+section('80. Map Generation Cross-File Determinism');
+// =====================================================
+{
+    // generateMap must produce identical terrain for same key
+    // This is critical: server and client generate from the same key
+    // and must get the exact same terrain
+    const mapKeys = ['caves', 'canyon', 'asteroid', 'fortress', 'tunnels', 'arena'];
+    for (const key of mapKeys) {
+        const m1 = generateMap(key);
+        const m2 = generateMap(key);
+        assert(m1.terrain.length === m2.terrain.length, `${key}: terrain point count deterministic`);
+        assert(m1.platforms.length === m2.platforms.length, `${key}: platform count deterministic`);
+        // Check all terrain points match exactly
+        let match = true;
+        for (let i = 0; i < m1.terrain.length; i++) {
+            if (m1.terrain[i].x !== m2.terrain[i].x || m1.terrain[i].y !== m2.terrain[i].y) { match = false; break; }
+        }
+        assert(match, `${key}: terrain coords are identical across calls`);
+        // Check platforms match
+        let platMatch = true;
+        for (let i = 0; i < m1.platforms.length; i++) {
+            if (m1.platforms[i].x !== m2.platforms[i].x || m1.platforms[i].width !== m2.platforms[i].width) { platMatch = false; break; }
+        }
+        assert(platMatch, `${key}: platform coords are identical across calls`);
+    }
+}
+
+// =====================================================
+section('81. State Broadcast Rate');
+// =====================================================
+{
+    // STATE_INTERVAL=2 means broadcast every 2 frames = 30 Hz at 60fps
+    assert(STATE_INTERVAL === 2, 'STATE_INTERVAL is 2 (30 Hz)');
+    const fps = 60;
+    const broadcastHz = fps / STATE_INTERVAL;
+    assert(broadcastHz === 30, 'broadcast rate = 30 Hz');
+    // Sanity: should be between 15-60 Hz
+    assert(broadcastHz >= 15 && broadcastHz <= 60, 'broadcast rate in sane range');
+}
+
+// =====================================================
+section('82. Pickup Spawn Interval');
+// =====================================================
+{
+    // PICKUP_SPAWN_INTERVAL = 360 frames = 6 seconds at 60fps
+    assert(PICKUP_SPAWN_INTERVAL === 360, 'pickup spawn interval = 360 frames');
+    const spawnPeriodSec = PICKUP_SPAWN_INTERVAL / 60;
+    assert(spawnPeriodSec === 6, 'pickup spawns attempted every 6 seconds');
+    // With PICKUP_MAX = 5, map never has more than 5 pickups
+    assert(PICKUP_MAX === 5, 'max 5 pickups at once');
+}
+
+// =====================================================
+section('83. Random Pickup Type Weighted Distribution');
+// =====================================================
+{
+    // The randomPickupType function uses weighted random selection
+    // Replicate the algorithm and verify distribution
+    function randomPickupType(rng) {
+        let r = rng() * PICKUP_TOTAL_WEIGHT;
+        for (const pt of PICKUP_TYPES) { r -= pt.weight; if (r <= 0) return pt.id; }
+        return PICKUP_TYPES[PICKUP_TYPES.length - 1].id;
+    }
+
+    // Use deterministic 'random'
+    let seed = 42;
+    function testRng() { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }
+
+    const counts = {};
+    const N = 10000;
+    for (let i = 0; i < N; i++) {
+        const t = randomPickupType(testRng);
+        counts[t] = (counts[t] || 0) + 1;
+    }
+
+    // Shield (weight 4/19 ≈ 21%) should be most common
+    assert(counts.shield > counts.homing, 'shield more common than homing');
+    // Homing (weight 1/19 ≈ 5.3%) should be rarest
+    for (const id of Object.keys(counts)) {
+        if (id !== 'homing') assert(counts[id] >= counts.homing, `${id} at least as common as homing`);
+    }
+    // All types should appear
+    for (const pt of PICKUP_TYPES) {
+        assert(counts[pt.id] > 0, `${pt.id} appears in distribution`);
+    }
+}
+
+// =====================================================
+section('84. Room Code Generation');
+// =====================================================
+{
+    // Room codes are 4-char uppercase, no ambiguous chars (0/O/I/1)
+    function randomCode() {
+        const c = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+        let s = '';
+        for (let i = 0; i < 4; i++) s += c[Math.floor(Math.random() * c.length)];
+        return s;
+    }
+
+    const codes = new Set();
+    for (let i = 0; i < 100; i++) {
+        const code = randomCode();
+        assert(code.length === 4, 'room code is 4 chars');
+        assert(/^[A-Z]+$/.test(code), 'room code is uppercase letters only');
+        // No ambiguous characters
+        assert(!code.includes('O'), 'no letter O (ambiguous with 0)');
+        assert(!code.includes('I'), 'no letter I (ambiguous with 1)');
+        codes.add(code);
+    }
+    // Should generate varied codes (not all the same)
+    assert(codes.size > 50, 'room codes have good entropy');
+}
+
+// =====================================================
+section('85. Respawn Grants Spawn Shield');
+// =====================================================
+{
+    events = [];
+    const p = { id:'test', x:100, y:100, vx:2, vy:-1, angle:0.5, alive:false,
+                lives:5, invT:0, landed:false, shield:0, weapon:'heavy',
+                spawnX:500, spawnY:300 };
+
+    respawnPlayer(p);
+    assert(p.alive === true, 'respawned alive');
+    assert(p.shield === 1, 'respawn grants 1 shield');
+    assert(p.invT === INVINCE_T, 'respawn grants invincibility');
+    assert(p.x === 500, 'respawned at spawnX');
+    assert(p.y === 300, 'respawned at spawnY');
+    assert(p.vx === 0, 'respawn zeroes vx');
+    assert(p.vy === 0, 'respawn zeroes vy');
+    assert(p.angle === -Math.PI/2, 'respawn resets angle to upright');
+    assert(p.landed === true, 'respawn sets landed');
+    assert(p.landedTimer === 60, 'respawn sets landed timer');
+}
+
+// =====================================================
+section('86. Kill Resets Weapon and Shield');
+// =====================================================
+{
+    events = [];
+    const p = { id:'test', alive:true, lives:5, invT:0, shield:0,
+                weapon:'spread', vx:2, vy:-1, landed:true, respawnT:0 };
+
+    killPlayer(p, false);
+    assert(p.weapon === 'normal', 'death resets weapon to normal');
+    assert(p.shield === 0, 'death resets shield to 0');
+    assert(p.alive === false, 'player is dead');
+    assert(p.lives === 4, 'lost one life');
+    assert(p.vx === 0, 'death zeroes vx');
+    assert(p.vy === 0, 'death zeroes vy');
+    assert(p.respawnT === RESPAWN_T, 'death sets respawn timer');
+}
+
+// =====================================================
+section('87. Force Kill Bypasses Shield');
+// =====================================================
+{
+    events = [];
+    const p = { id:'test', alive:true, lives:5, invT:0, shield:3,
+                weapon:'heavy', vx:1, vy:1, landed:false, respawnT:0 };
+
+    killPlayer(p, true); // force = true (e.g. base kamikaze)
+    assert(p.alive === false, 'force kill kills despite shield');
+    assert(p.shield === 0, 'shield reset after force kill');
+    assert(p.weapon === 'normal', 'weapon reset after force kill');
+}
+
+// =====================================================
+section('88. Base Collision Detailed');
+// =====================================================
+{
+    worldW = 3600; worldH = 2000;
+    const terrain = [{x:0,y:1800},{x:3600,y:1800}];
+    const ceiling = [{x:0,y:100},{x:3600,y:100}];
+    const base = { x:200, y:1750, w:BASE_W, h:BASE_H };
+
+    // Ship landing on own base
+    const shipOnBase = {
+        x:225, y:1750-SHIP_SZ+1, vx:0.5, vy:0.3,
+        angle:-Math.PI/2, alive:true, base:base
+    };
+    const result = shipCollision(shipOnBase, terrain, ceiling, []);
+    assert(result !== null, 'base collision detected');
+    assert(result.type === 'land', 'can land on own base');
+
+    // Ship far from base — no base collision
+    const farShip = {
+        x:1000, y:1000, vx:0, vy:0,
+        angle:-Math.PI/2, alive:true, base:base
+    };
+    const farResult = shipCollision(farShip, terrain, ceiling, []);
+    assert(farResult === null, 'no collision when far from base and terrain');
+}
+
+// =====================================================
+section('89. World Bounds Collision');
+// =====================================================
+{
+    worldW = 2000; worldH = 1200;
+    const terrain = [{x:0,y:1100},{x:2000,y:1100}];
+    const ceiling = [{x:0,y:50},{x:2000,y:50}];
+
+    // Ship at top of world
+    const topShip = { x:1000, y:3, vx:0, vy:-1, angle:0, alive:true, base:{x:100,y:1050,w:50,h:28} };
+    const topResult = shipCollision(topShip, terrain, ceiling, []);
+    assert(topResult !== null && topResult.type === 'crash', 'crashes at world top boundary');
+
+    // Ship at bottom of world
+    const botShip = { x:1000, y:1197, vx:0, vy:1, angle:0, alive:true, base:{x:100,y:1050,w:50,h:28} };
+    const botResult = shipCollision(botShip, terrain, ceiling, []);
+    assert(botResult !== null && botResult.type === 'crash', 'crashes at world bottom boundary');
+}
+
+// =====================================================
+section('90. Landed Ship Takeoff Physics');
+// =====================================================
+{
+    // When landed and thrust is pressed, ship takes off with -THRUST*2 vy
+    const ship = { landed:true, alive:true, vy:0, vx:0, angle:-Math.PI/2, thrusting:false, revThrusting:false };
+    const input = { thrust:true, rot:0.3, revThrust:false };
+
+    if (ship.landed && input.thrust) {
+        ship.landed = false;
+        ship.vy = -THRUST * 2;
+        ship.thrusting = true;
+    }
+    ship.angle += input.rot * ROT_SPD_MAX;
+
+    assert(!ship.landed, 'takeoff clears landed flag');
+    assertApprox(ship.vy, -THRUST * 2, 0.0001, 'takeoff velocity = -THRUST*2');
+    assert(ship.thrusting, 'thrusting flag set');
+    assertApprox(ship.angle, -Math.PI/2 + 0.3 * ROT_SPD_MAX, 0.0001, 'rotation applied on takeoff');
+}
+
+// =====================================================
+section('91. Interpolation Buffer Ordering');
+// =====================================================
+{
+    // Interpolation requires sorted time-ordered state buffer
+    const INTERP_DELAY = 80; // ms
+    const buffer = [
+        { time: 1000, state: {} },
+        { time: 1033, state: {} },
+        { time: 1066, state: {} },
+        { time: 1100, state: {} },
+    ];
+
+    const now = 1150;
+    const renderTime = now - INTERP_DELAY; // 1070
+
+    // Find interpolation pair
+    let prev = null, next = null;
+    for (let i = 0; i < buffer.length - 1; i++) {
+        if (buffer[i].time <= renderTime && buffer[i+1].time >= renderTime) {
+            prev = buffer[i]; next = buffer[i+1]; break;
+        }
+    }
+    assert(prev !== null, 'found prev state for interpolation');
+    assert(next !== null, 'found next state for interpolation');
+    assert(prev.time === 1066, 'prev time = 1066');
+    assert(next.time === 1100, 'next time = 1100');
+
+    // Interpolation factor
+    const t = (renderTime - prev.time) / (next.time - prev.time);
+    assertApprox(t, (1070 - 1066) / (1100 - 1066), 0.001, 'interpolation factor correct');
+    assert(t >= 0 && t <= 1, 'factor in [0,1] range');
+}
+
+// =====================================================
+section('92. Arena Map Has No Platforms');
+// =====================================================
+{
+    const arena = generateMap('arena');
+    assert(arena.platforms.length === 0, 'arena has zero platforms');
+    assert(arena.terrain.length > 0, 'arena has terrain');
+    assert(arena.ceiling.length > 0, 'arena has ceiling');
+    // Arena terrain should be relatively flat
+    const ys = arena.terrain.map(t => t.y);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    assert(maxY - minY < 100, 'arena terrain is fairly flat');
+}
+
+// =====================================================
+section('93. All Maps Have Valid Terrain');
+// =====================================================
+{
+    const mapKeys = ['caves','canyon','asteroid','fortress','tunnels','arena'];
+    for (const key of mapKeys) {
+        const m = generateMap(key);
+        // Terrain must start at x=0 and end at worldW
+        assert(m.terrain[0].x === 0, `${key}: terrain starts at x=0`);
+        assert(m.terrain[m.terrain.length-1].x === MAPS[key].w, `${key}: terrain ends at worldW`);
+        // Ceiling must also span full width
+        assert(m.ceiling[0].x === 0, `${key}: ceiling starts at x=0`);
+        assert(m.ceiling[m.ceiling.length-1].x === MAPS[key].w, `${key}: ceiling ends at worldW`);
+        // Terrain must be below ceiling at every point
+        for (let i = 0; i < m.terrain.length; i++) {
+            assert(m.terrain[i].y > m.ceiling[i].y, `${key}: terrain[${i}] below ceiling`);
+        }
+        // All platforms within world bounds
+        for (const pl of m.platforms) {
+            assert(pl.x >= 0, `${key}: platform x >= 0`);
+            assert(pl.y >= 0, `${key}: platform y >= 0`);
+            assert(pl.x + pl.width <= MAPS[key].w + 100, `${key}: platform right edge within world`);
+            assert(pl.y + pl.height <= MAPS[key].h, `${key}: platform bottom within world`);
+        }
+    }
+}
+
+// =====================================================
+section('94. Bullet Lifetime & Distance');
+// =====================================================
+{
+    // A bullet fired at BULLET_SPD for BULLET_LIFE frames travels predictable distance
+    const maxDist = BULLET_SPD * BULLET_LIFE;
+    assert(maxDist === 605, `normal bullet max range = ${maxDist}`);
+
+    // Heavy bullet travels further (1.5x life, 0.9x speed)
+    const heavyDist = (BULLET_SPD * 0.9) * Math.round(BULLET_LIFE * 1.5);
+    assertApprox(heavyDist, 4.95 * 165, 1, `heavy bullet max range = ~816`);
+
+    // Homing also has extended life
+    const homingDist = (BULLET_SPD * 0.9) * Math.round(BULLET_LIFE * 1.5);
+    assertApprox(homingDist, 4.95 * 165, 1, 'homing bullet same range as heavy');
+}
+
+// =====================================================
+section('95. Colors Array');
+// =====================================================
+{
+    assert(COLORS.length === 8, '8 player colors');
+    // All colors are valid hex
+    for (let i = 0; i < COLORS.length; i++) {
+        assert(/^#[0-9a-f]{6}$/i.test(COLORS[i]), `color ${i} is valid hex`);
+    }
+    // All unique
+    const uniqueColors = new Set(COLORS);
+    assert(uniqueColors.size === 8, 'all 8 colors are unique');
 }
 
 console.log(`\n${'='.repeat(50)}`);

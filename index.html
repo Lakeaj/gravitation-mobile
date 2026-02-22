@@ -179,7 +179,7 @@ const LIVES = 10, RESPAWN_T = 90, INVINCE_T = 120;
 const BASE_W = 50, BASE_H = 28;
 const BASE_EXP_DUR = 240, BASE_EXP_R = 65, RESPAWN_KILL_R = 58;
 const LAND_MAX_SPD = 2.2, LAND_MAX_ANGLE = 0.85;
-const STATE_INTERVAL = 3; // send state every N frames (60/3 = 20fps)
+const STATE_INTERVAL = 2; // send state every N frames (60/2 = 30fps)
 const COLORS = ['#00ccff','#ff3366','#33ff66','#ffcc00','#ff66ff','#66ffcc','#ff8833','#aa66ff'];
 
 // ---------- PICKUP TYPES ----------
@@ -1607,7 +1607,7 @@ function clientUpdate() {
         const spd = Math.sqrt(me.vx*me.vx + me.vy*me.vy);
         if (spd > MAX_SPD) { me.vx *= MAX_SPD/spd; me.vy *= MAX_SPD/spd; }
         me.x += me.vx; me.y += me.vy;
-        if (me.x < 0) me.x += worldW; if (me.x >= worldW) me.x -= worldW;
+        if (me.x < 0) me.x += worldW; if (me.x > worldW) me.x -= worldW;
         // Terrain collision
         const tInfo = getTerrainYAt(me.x, terrain);
         if (tInfo && me.y + SHIP_SZ >= tInfo.y) {
@@ -1617,7 +1617,7 @@ function clientUpdate() {
         const cInfo = getTerrainYAt(me.x, ceiling);
         if (cInfo && me.y - SHIP_SZ <= cInfo.y) { me.y = cInfo.y + SHIP_SZ; me.vy = Math.abs(me.vy) * 0.3; }
         for (const pl of platforms) {
-            if (me.x >= pl.x && me.x <= pl.x + pl.w && me.y + SHIP_SZ >= pl.y && me.y + SHIP_SZ <= pl.y + 10 && me.vy >= 0) {
+            if (me.x >= pl.x && me.x <= pl.x + pl.width && me.y + SHIP_SZ >= pl.y && me.y + SHIP_SZ <= pl.y + 10 && me.vy >= 0) {
                 if (canLand(me, {y: pl.y, slope: 0})) { me.y = pl.y - SHIP_SZ; me.vx = 0; me.vy = 0; me.landed = true; }
                 else { me.y = pl.y - SHIP_SZ; me.vy = -Math.abs(me.vy) * 0.3; }
             }
@@ -1679,7 +1679,7 @@ function clientUpdate() {
         me.angle += angleDiff * CORRECTION_RATE;
         me.alive = sp.al; me.lives = sp.l; me.score = sp.s; me.invT = sp.iv ? 1 : 0;
         me.respawnT = sp.rT; me.weapon = sp.wp || 'normal'; me.shield = sp.sh || 0; me.landed = sp.la;
-        if (me.x < 0) me.x += worldW; if (me.x >= worldW) me.x -= worldW;
+        if (me.x < 0) me.x += worldW; if (me.x > worldW) me.x -= worldW;
     }
 
     // Bullets, beams, pickups, base explosions from latest server state
