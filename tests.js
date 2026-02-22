@@ -24,7 +24,7 @@ function section(name) { console.log(`\n── ${name} ──`); }
 // REPLICATED CONSTANTS (must match index.html v2.1 + server.js)
 // =====================================================
 const G = 0.0396, THRUST = 0.092, ROT_SPD_MAX = 0.045, MAX_SPD = 2.24;
-const REV_THRUST = 0.0552;
+const REV_THRUST = THRUST;
 const BULLET_SPD = 5.5, BULLET_LIFE = 110, FIRE_CD = 14, SHIP_SZ = 10;
 const LIVES = 10, RESPAWN_T = 90, INVINCE_T = 120;
 const BASE_W = 50, BASE_H = 28;
@@ -1088,11 +1088,11 @@ section('31. Constants Sanity Checks');
 {
     assertApprox(G, 0.0396, 0.0001, 'gravity = 0.0396 (reduced 10% from 0.044)');
     assertApprox(THRUST, 0.092, 0.001, 'thrust = 0.092 (increased 15% from 0.08)');
-    assertApprox(REV_THRUST, 0.0552, 0.001, 'rev thrust = 0.0552 (increased 15% from 0.048)');
+    assertApprox(REV_THRUST, THRUST, 0.001, 'rev thrust equals forward thrust');
     assert(G > 0, 'gravity is positive');
     assert(THRUST > 0, 'thrust is positive');
     assert(REV_THRUST > 0, 'reverse thrust is positive');
-    assert(REV_THRUST < THRUST * 1.5, 'reverse thrust not stronger than 1.5x thrust');
+    assert(REV_THRUST === THRUST, 'reverse thrust equals forward thrust');
     assert(BULLET_SPD > MAX_SPD, 'bullets faster than ships');
     assert(LAND_MAX_SPD > 0 && LAND_MAX_SPD < MAX_SPD, 'landing speed between 0 and max');
     assert(LAND_MAX_ANGLE > 0 && LAND_MAX_ANGLE < Math.PI/2, 'landing angle tolerance between 0 and 90 deg');
@@ -1927,7 +1927,7 @@ section('67. Client-Server Constant Alignment');
     assert(THRUST === 0.092, 'THRUST matches');
     assert(ROT_SPD_MAX === 0.045, 'ROT_SPD_MAX matches');
     assert(MAX_SPD === 2.24, 'MAX_SPD matches');
-    assert(REV_THRUST === 0.0552, 'REV_THRUST matches');
+    assert(REV_THRUST === THRUST, 'REV_THRUST equals THRUST');
     assert(BULLET_SPD === 5.5, 'BULLET_SPD matches');
     assert(BULLET_LIFE === 110, 'BULLET_LIFE matches');
     assert(FIRE_CD === 14, 'FIRE_CD matches');

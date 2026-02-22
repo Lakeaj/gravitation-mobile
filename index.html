@@ -173,7 +173,7 @@ const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
 
 // ---------- CONSTANTS ----------
 const G = 0.0396, THRUST = 0.092, ROT_SPD_MAX = 0.045, MAX_SPD = 2.24;
-const REV_THRUST = 0.0552; // reverse thrust (weaker)
+const REV_THRUST = THRUST; // reverse thrust (same as forward)
 const BULLET_SPD = 5.5, BULLET_LIFE = 110, FIRE_CD = 14, SHIP_SZ = 10;
 const LIVES = 10, RESPAWN_T = 90, INVINCE_T = 120;
 const BASE_W = 50, BASE_H = 28;
@@ -1816,6 +1816,15 @@ function draw() {
     let sx=0,sy=0;
     if (screenShake>0){sx=(Math.random()-.5)*screenShake*2;sy=(Math.random()-.5)*screenShake*2;}
 
+    // Compute visible world-space bounding box (accounts for camera rotation)
+    const cosA = Math.abs(Math.cos(camAngle)), sinA = Math.abs(Math.sin(camAngle));
+    const halfVW = W/2 * cosA + H/2 * sinA + 120; // +120 margin for entities
+    const halfVH = W/2 * sinA + H/2 * cosA + 120;
+    const visLeft = camTarget.camX - halfVW;
+    const visRight = camTarget.camX + halfVW;
+    const visTop = camTarget.camY - halfVH;
+    const visBot = camTarget.camY + halfVH;
+
     ctx.save();
     // Ship-up camera: translate to center, rotate world, then offset
     ctx.translate(W/2+sx, H/2+sy);
@@ -1834,8 +1843,10 @@ function draw() {
         draw._cg = ctx.createLinearGradient(0,0,0,80); draw._cg.addColorStop(0,'#0d0502'); draw._cg.addColorStop(1,'#2a1a0e');
     }
 
-    // === Seamless wrap: draw world 3 times at offsets ===
-    const wrapOffsets = [0, -worldW, worldW];
+    // === Smart wrap: only draw visible wrap offsets (saves 33-67% of rendering) ===
+    const wrapOffsets = [0];
+    if (visLeft < 0) wrapOffsets.push(worldW);      // left side wraps, need right copy
+    if (visRight > worldW) wrapOffsets.push(-worldW); // right side wraps, need left copy
     for (const wOff of wrapOffsets) {
     ctx.save(); ctx.translate(wOff, 0);
 
@@ -1883,16 +1894,16 @@ function draw() {
         if (prog<.8&&Math.sin(be.phase*3)>0){ctx.fillStyle=`rgba(255,0,0,${al})`;ctx.font='bold 11px Courier New';ctx.textAlign='center';ctx.fillText('⚠ DANGER ⚠',be.x,be.y-pr-6);}
     }
 
-    // Particles
-    for (const pt of particles){ctx.globalAlpha=pt.life/pt.maxLife;ctx.fillStyle=pt.color;ctx.fillRect(pt.x-pt.size/2,pt.y-pt.size/2,pt.size,pt.size);}
+    // Particles — viewport cull
+    for (const pt of particles){const wx=pt.x+wOff;if(wx<visLeft||wx>visRight||pt.y<visTop||pt.y>visBot)continue;ctx.globalAlpha=pt.life/pt.maxLife;ctx.fillStyle=pt.color;ctx.fillRect(pt.x-pt.size/2,pt.y-pt.size/2,pt.size,pt.size);}
     ctx.globalAlpha=1;
 
-    // Explosions
-    for (const e of explosions){ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,Math.PI*2);ctx.fillStyle=e.color;ctx.globalAlpha=e.alpha*.3;ctx.fill();ctx.strokeStyle=e.color;ctx.globalAlpha=e.alpha;ctx.lineWidth=2;ctx.stroke();}
+    // Explosions — viewport cull
+    for (const e of explosions){const wx=e.x+wOff;if(wx<visLeft-e.r||wx>visRight+e.r||e.y<visTop-e.r||e.y>visBot+e.r)continue;ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,Math.PI*2);ctx.fillStyle=e.color;ctx.globalAlpha=e.alpha*.3;ctx.fill();ctx.strokeStyle=e.color;ctx.globalAlpha=e.alpha;ctx.lineWidth=2;ctx.stroke();}
     ctx.globalAlpha=1;
 
-    // Bullets — skip shadowBlur in multiplayer (expensive GPU op per bullet)
-    for (const b of bullets){const bsz=b.sz||2.5;ctx.fillStyle=b.color;if(!isMultiplayer){ctx.shadowColor=b.color;ctx.shadowBlur=bsz>3?6:4;}ctx.beginPath();ctx.arc(b.x,b.y,bsz,0,Math.PI*2);ctx.fill();ctx.globalAlpha=.3;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*2,b.y-b.vy*2);ctx.stroke();ctx.globalAlpha=1;}
+    // Bullets — viewport cull + skip shadowBlur in multiplayer (expensive GPU op per bullet)
+    for (const b of bullets){const wx=b.x+wOff;if(wx<visLeft||wx>visRight||b.y<visTop||b.y>visBot)continue;const bsz=b.sz||2.5;ctx.fillStyle=b.color;if(!isMultiplayer){ctx.shadowColor=b.color;ctx.shadowBlur=bsz>3?6:4;}ctx.beginPath();ctx.arc(b.x,b.y,bsz,0,Math.PI*2);ctx.fill();ctx.globalAlpha=.3;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*2,b.y-b.vy*2);ctx.stroke();ctx.globalAlpha=1;}
     ctx.shadowBlur=0;
 
     // Laser beams
@@ -1917,8 +1928,9 @@ function draw() {
         ctx.restore();
     }
 
-    // Pickups
+    // Pickups — viewport cull
     for (const pk of pickups){
+        const wx=pk.x+wOff;if(wx<visLeft-PICKUP_R||wx>visRight+PICKUP_R)continue;
         const pt = PICKUP_TYPES.find(t=>t.id===pk.type);
         if (!pt) continue;
         const bob = Math.sin(pk.bobPhase||0)*4;
@@ -1938,9 +1950,10 @@ function draw() {
         ctx.textBaseline='alphabetic';
     }
 
-    // Ships
+    // Ships — viewport cull
     for (const pp of players){
         if (!pp.alive) continue;
+        const wx=pp.x+wOff;if(wx<visLeft-40||wx>visRight+40||pp.y<visTop-40||pp.y>visBot+40)continue;
         ctx.save();ctx.translate(pp.x,pp.y);ctx.rotate(pp.angle+Math.PI/2);
         if (pp.invT&&Math.floor(frame/4)%2) ctx.globalAlpha=.4;
         if(!isMultiplayer){ctx.shadowColor=pp.color;ctx.shadowBlur=10;}
