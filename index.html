@@ -218,6 +218,9 @@ const INTERP_DELAY = 80; // ms behind real time for remote players
 const CORRECTION_RATE = 0.2; // blend rate toward server truth for local player
 let lastStateTime = 0; // tracks when we last got new server state
 let inputFrame = 0; // throttle input sending
+const _li = { rot:0, thrust:false, revThrust:false, fire:false }; // reusable input object
+const _inputMsg = { t:'i', r:0, th:false, rv:false, f:false }; // reusable WS message
+let isMultiplayer = false; // true when using clientUpdate (enables perf shortcuts)
 let screenShake = 0;
 let camAngle = -Math.PI/2; // smoothed camera rotation (ship-up view)
 let spectatingIdx = -1;
@@ -592,6 +595,7 @@ function handleServerMessage(data) {
             break;
         case 'start':
             isHost = false; // server is the host
+            isMultiplayer = true;
             beginGame(data);
             break;
         case 's': // state update from server
@@ -731,6 +735,7 @@ function cleanup() {
     if (ws && !isHost) { ws.close(); ws = null; } // close WS for multiplayer; keep for solo/survival
     lobbyPlayers = [];
     isHost = false;
+    isMultiplayer = false;
     isRoomCreator = false;
     myIndex = -1;
     stateBuffer = [];
@@ -994,6 +999,7 @@ function beginGame(data) {
     killFeed = [];
     playerDeaths = new Array(data.players.length).fill(0);
     stateBuffer = []; // reset interpolation buffer
+    draw._tg = null; draw._cg = null; // invalidate cached gradients
 
     showScreen(null); // hide all overlays
     running = true;
@@ -1589,7 +1595,8 @@ function clientUpdate() {
     const li = getLocalInput();
     inputFrame++;
     if (ws && ws.readyState === WebSocket.OPEN && (inputFrame & 1) === 0) {
-        ws.send(JSON.stringify({t:'i', r:li.rot, th:li.thrust, rv:li.revThrust, f:li.fire}));
+        _inputMsg.r = li.rot; _inputMsg.th = li.thrust; _inputMsg.rv = li.revThrust; _inputMsg.f = li.fire;
+        ws.send(JSON.stringify(_inputMsg));
     }
 
     // ---------- CLIENT-SIDE PREDICTION for own ship ----------
@@ -1725,7 +1732,7 @@ function clientUpdate() {
 
     for (let i=explosions.length-1;i>=0;i--){const e=explosions[i];if(e.growing){e.r+=2;if(e.r>=e.maxR)e.growing=false;}e.alpha-=.03;if(e.alpha<=0)explosions.splice(i,1);}
     for (let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=mapGrav*.3;p.vx*=.99;p.life--;if(p.life<=0)particles.splice(i,1);}
-    if (particles.length>300) particles.splice(0,particles.length-300);
+    if (particles.length>150) particles.splice(0,particles.length-150);
     if (screenShake>0){screenShake*=.9;if(screenShake<.5)screenShake=0;}
 
     // Thrust sounds (client) — every 8 frames
@@ -1813,8 +1820,14 @@ function draw() {
     // Background — large enough for any wrap position
     ctx.fillStyle='#0a0012'; ctx.fillRect(-worldW-200,-200,worldW*3+400,worldH+400);
 
-    // Update star twinkle once per frame
-    for (const s of stars) s.tw += .001;
+    // Update star twinkle once per frame (skip every other frame in multiplayer)
+    if (!isMultiplayer || (frame & 1) === 0) { for (const s of stars) s.tw += .001; }
+
+    // Cache gradients (avoid recreating 6x per frame)
+    if (!draw._tg) {
+        draw._tg = ctx.createLinearGradient(0,worldH-100,0,worldH); draw._tg.addColorStop(0,'#2a1a0e'); draw._tg.addColorStop(1,'#0d0502');
+        draw._cg = ctx.createLinearGradient(0,0,0,80); draw._cg.addColorStop(0,'#0d0502'); draw._cg.addColorStop(1,'#2a1a0e');
+    }
 
     // === Seamless wrap: draw world 3 times at offsets ===
     const wrapOffsets = [0, -worldW, worldW];
@@ -1828,7 +1841,7 @@ function draw() {
     ctx.beginPath();ctx.moveTo(terrain[0].x,worldH+50);
     for (const t of terrain)ctx.lineTo(t.x,t.y);
     ctx.lineTo(terrain[terrain.length-1].x,worldH+50);ctx.closePath();
-    const tg=ctx.createLinearGradient(0,worldH-100,0,worldH);tg.addColorStop(0,'#2a1a0e');tg.addColorStop(1,'#0d0502');ctx.fillStyle=tg;ctx.fill();
+    ctx.fillStyle=draw._tg;ctx.fill();
     ctx.strokeStyle='#5a3a1e';ctx.lineWidth=2;ctx.beginPath();
     for (let i=0;i<terrain.length;i++){if(i===0)ctx.moveTo(terrain[i].x,terrain[i].y);else ctx.lineTo(terrain[i].x,terrain[i].y);}ctx.stroke();
 
@@ -1836,7 +1849,7 @@ function draw() {
     ctx.beginPath();ctx.moveTo(ceiling[0].x,-50);
     for (const c of ceiling)ctx.lineTo(c.x,c.y);
     ctx.lineTo(ceiling[ceiling.length-1].x,-50);ctx.closePath();
-    const cg=ctx.createLinearGradient(0,0,0,80);cg.addColorStop(0,'#0d0502');cg.addColorStop(1,'#2a1a0e');ctx.fillStyle=cg;ctx.fill();
+    ctx.fillStyle=draw._cg;ctx.fill();
     ctx.strokeStyle='#5a3a1e';ctx.lineWidth=2;ctx.beginPath();
     for (let i=0;i<ceiling.length;i++){if(i===0)ctx.moveTo(ceiling[i].x,ceiling[i].y);else ctx.lineTo(ceiling[i].x,ceiling[i].y);}ctx.stroke();
 
@@ -1873,8 +1886,8 @@ function draw() {
     for (const e of explosions){ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,Math.PI*2);ctx.fillStyle=e.color;ctx.globalAlpha=e.alpha*.3;ctx.fill();ctx.strokeStyle=e.color;ctx.globalAlpha=e.alpha;ctx.lineWidth=2;ctx.stroke();}
     ctx.globalAlpha=1;
 
-    // Bullets
-    for (const b of bullets){const bsz=b.sz||2.5;ctx.fillStyle=b.color;ctx.shadowColor=b.color;ctx.shadowBlur=bsz>3?6:4;ctx.beginPath();ctx.arc(b.x,b.y,bsz,0,Math.PI*2);ctx.fill();ctx.strokeStyle=b.color;ctx.globalAlpha=.3;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*2,b.y-b.vy*2);ctx.stroke();ctx.globalAlpha=1;}
+    // Bullets — skip shadowBlur in multiplayer (expensive GPU op per bullet)
+    for (const b of bullets){const bsz=b.sz||2.5;ctx.fillStyle=b.color;if(!isMultiplayer){ctx.shadowColor=b.color;ctx.shadowBlur=bsz>3?6:4;}ctx.beginPath();ctx.arc(b.x,b.y,bsz,0,Math.PI*2);ctx.fill();ctx.globalAlpha=.3;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*2,b.y-b.vy*2);ctx.stroke();ctx.globalAlpha=1;}
     ctx.shadowBlur=0;
 
     // Laser beams
@@ -1884,7 +1897,7 @@ function draw() {
         const flicker=0.7+Math.random()*0.3;
         // Glow layer
         ctx.save();
-        ctx.shadowColor='#00ddff';ctx.shadowBlur=20*intensity;
+        if(!isMultiplayer){ctx.shadowColor='#00ddff';ctx.shadowBlur=20*intensity;}
         ctx.strokeStyle='rgba(0,221,255,'+(0.15*intensity*flicker)+')';ctx.lineWidth=12;
         ctx.beginPath();ctx.moveTo(bm.x+Math.cos(bm.angle)*SHIP_SZ*2,bm.y+Math.sin(bm.angle)*SHIP_SZ*2);ctx.lineTo(endX,endY);ctx.stroke();
         // Core beam
@@ -1894,7 +1907,7 @@ function draw() {
         ctx.strokeStyle='rgba(255,255,255,'+(0.5*intensity*flicker)+')';ctx.lineWidth=1.5;
         ctx.beginPath();ctx.moveTo(bm.x+Math.cos(bm.angle)*SHIP_SZ*2,bm.y+Math.sin(bm.angle)*SHIP_SZ*2);ctx.lineTo(endX,endY);ctx.stroke();
         // Impact flash at beam end
-        ctx.fillStyle='#00ddff';ctx.globalAlpha=0.4*intensity*flicker;ctx.shadowBlur=15;
+        ctx.fillStyle='#00ddff';ctx.globalAlpha=0.4*intensity*flicker;if(!isMultiplayer){ctx.shadowBlur=15;}
         ctx.beginPath();ctx.arc(endX,endY,6+Math.random()*4,0,Math.PI*2);ctx.fill();
         ctx.restore();
     }
@@ -1905,8 +1918,8 @@ function draw() {
         if (!pt) continue;
         const bob = Math.sin(pk.bobPhase||0)*4;
         const py = pk.y + bob;
-        // Glow
-        ctx.shadowColor=pt.color;ctx.shadowBlur=12;
+        // Glow — skip shadowBlur in multiplayer
+        if(!isMultiplayer){ctx.shadowColor=pt.color;ctx.shadowBlur=12;}
         ctx.strokeStyle=pt.color;ctx.lineWidth=2;
         ctx.globalAlpha=0.4+Math.sin((pk.bobPhase||0)*2)*.2;
         ctx.beginPath();ctx.arc(pk.x,py,PICKUP_R,0,Math.PI*2);ctx.stroke();
@@ -1925,7 +1938,7 @@ function draw() {
         if (!pp.alive) continue;
         ctx.save();ctx.translate(pp.x,pp.y);ctx.rotate(pp.angle+Math.PI/2);
         if (pp.invT&&Math.floor(frame/4)%2) ctx.globalAlpha=.4;
-        ctx.shadowColor=pp.color;ctx.shadowBlur=10;
+        if(!isMultiplayer){ctx.shadowColor=pp.color;ctx.shadowBlur=10;}
         ctx.fillStyle=pp.color;ctx.beginPath();
         ctx.moveTo(0,-SHIP_SZ);ctx.lineTo(-SHIP_SZ*.7,SHIP_SZ*.7);ctx.lineTo(0,SHIP_SZ*.3);ctx.lineTo(SHIP_SZ*.7,SHIP_SZ*.7);ctx.closePath();ctx.fill();
         ctx.strokeStyle='#fff';ctx.lineWidth=1;ctx.stroke();
@@ -2176,7 +2189,6 @@ function drawControls() {
 // =====================================================
 function getLocalInput() {
     let rot = 0, thrust = false, revThrust = false, fire = false;
-
     if (joystickTouch) {
         const dx = joystickTouch.cx - joystickTouch.sx;
         const dy = joystickTouch.cy - joystickTouch.sy;
@@ -2198,7 +2210,8 @@ function getLocalInput() {
     if (keys['KeyS']||keys['ArrowDown']) revThrust = true;
     if (keys['Space']||keys['Enter']||keys['NumpadEnter']) fire = true;
 
-    return { rot, thrust, revThrust, fire };
+    _li.rot = rot; _li.thrust = thrust; _li.revThrust = revThrust; _li.fire = fire;
+    return _li;
 }
 
 // Touch events
