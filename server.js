@@ -813,17 +813,26 @@ class Room {
 // HTTP SERVER — serve static files
 // =====================================================
 const server = http.createServer((req, res) => {
-    let filePath;
-    if (req.url === '/' || req.url === '/index.html') {
-        filePath = path.join(__dirname, 'index.html');
-    } else {
-        res.writeHead(404);
-        res.end('Not Found');
+    const url = req.url.split('?')[0]; // strip query string
+    if (url === '/health') {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('OK');
         return;
     }
+    // Serve index.html for root and any other path (single-page app)
+    const filePath = path.join(__dirname, 'index.html');
     fs.readFile(filePath, (err, data) => {
-        if (err) { res.writeHead(404); res.end('Not Found'); }
-        else { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end(data); }
+        if (err) {
+            console.error('Failed to read index.html:', err.message);
+            res.writeHead(500);
+            res.end('Server error');
+        } else {
+            res.writeHead(200, {
+                'Content-Type': 'text/html',
+                'Cache-Control': 'no-cache'
+            });
+            res.end(data);
+        }
     });
 });
 
