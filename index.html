@@ -198,7 +198,10 @@ const PICKUP_TYPES = [
 ];
 const PICKUP_TOTAL_WEIGHT = PICKUP_TYPES.reduce((s,p)=>s+p.weight,0);
 
-let W, H;
+// Fixed game viewport — all devices see exactly the same game area
+const VIEW_W = 412, VIEW_H = 732; // reference phone viewport (logical pixels)
+let W = VIEW_W, H = VIEW_H;
+let screenW, screenH, viewScale = 1, viewOffX = 0, viewOffY = 0; // scaling state
 let running = false, frame = 0, af;
 
 // Networking — WebSocket to dedicated server
@@ -1808,7 +1811,11 @@ function updateCamera(p) {
 // DRAWING
 // =====================================================
 function draw() {
-    ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);
+    // Clear full screen (including any area outside fixed viewport on wider screens)
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
     const me = players[myIndex];
     const camTarget = (me && me.alive) ? me : (spectatingIdx>=0 ? players[spectatingIdx] : me);
     if (!camTarget) return;
@@ -1818,8 +1825,8 @@ function draw() {
 
     // Compute visible world-space bounding box (accounts for camera rotation)
     const cosA = Math.abs(Math.cos(camAngle)), sinA = Math.abs(Math.sin(camAngle));
-    const halfVW = W/2 * cosA + H/2 * sinA + 120; // +120 margin for entities
-    const halfVH = W/2 * sinA + H/2 * cosA + 120;
+    const halfVW = W/2 * cosA + H/2 * sinA + 200; // generous margin for rotation + entities
+    const halfVH = W/2 * sinA + H/2 * cosA + 200;
     const visLeft = camTarget.camX - halfVW;
     const visRight = camTarget.camX + halfVW;
     const visTop = camTarget.camY - halfVH;
@@ -2242,9 +2249,12 @@ canvas.addEventListener('touchstart', e => {
         return;
     }
     for (const t of e.changedTouches) {
-        if (t.clientX < W * 0.55 && !joystickTouch) {
-            joystickTouch = {id:t.identifier, sx:t.clientX, sy:t.clientY, cx:t.clientX, cy:t.clientY};
-        } else if (t.clientX >= W * 0.45) {
+        // Convert screen coords to game viewport coords
+        const gx = (t.clientX - viewOffX) / viewScale;
+        const gy = (t.clientY - viewOffY) / viewScale;
+        if (gx < W * 0.55 && !joystickTouch) {
+            joystickTouch = {id:t.identifier, sx:gx, sy:gy, cx:gx, cy:gy};
+        } else if (gx >= W * 0.45) {
             fireTouch = {id:t.identifier};
         }
     }
@@ -2254,7 +2264,8 @@ canvas.addEventListener('touchmove', e => {
     e.preventDefault();
     for (const t of e.changedTouches) {
         if (joystickTouch && t.identifier===joystickTouch.id) {
-            joystickTouch.cx=t.clientX; joystickTouch.cy=t.clientY;
+            joystickTouch.cx = (t.clientX - viewOffX) / viewScale;
+            joystickTouch.cy = (t.clientY - viewOffY) / viewScale;
         }
     }
 }, {passive:false});
@@ -2287,10 +2298,17 @@ document.addEventListener('visibilitychange', () => { if(document.hidden){keys={
 // =====================================================
 function resize() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2); // cap at 2x for performance
-    W = window.innerWidth; H = window.innerHeight;
-    canvas.width = W * dpr; canvas.height = H * dpr;
-    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    screenW = window.innerWidth; screenH = window.innerHeight;
+    // W and H stay fixed at VIEW_W x VIEW_H — all devices see the same game area
+    W = VIEW_W; H = VIEW_H;
+    // Uniform scale to fill screen (cover mode — no letterboxing)
+    viewScale = Math.max(screenW / W, screenH / H);
+    viewOffX = (screenW - W * viewScale) / 2;
+    viewOffY = (screenH - H * viewScale) / 2;
+    canvas.width = screenW * dpr; canvas.height = screenH * dpr;
+    canvas.style.width = screenW + 'px'; canvas.style.height = screenH + 'px';
+    // Base transform: DPR scaling + viewport scaling + centering offset
+    ctx.setTransform(dpr * viewScale, 0, 0, dpr * viewScale, dpr * viewOffX, dpr * viewOffY);
     // Invalidate cached gradients (they depend on H)
     if (typeof draw !== 'undefined') { draw._tg = null; draw._cg = null; }
 }

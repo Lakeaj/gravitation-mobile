@@ -2687,9 +2687,12 @@ section('96. Ship-to-Ship Collision Detection');
 }
 
 // =====================================================
-section('97. Canvas DPR Scaling');
+section('97. Fixed Viewport & DPR Scaling');
 // =====================================================
 {
+    // Fixed game viewport — all devices see the same game area
+    const VIEW_W = 412, VIEW_H = 732;
+
     // devicePixelRatio should be capped at 2 for performance
     const testDPR = (raw) => Math.min(raw || 1, 2);
     assert(testDPR(1) === 1, 'DPR 1x stays 1x');
@@ -2699,13 +2702,38 @@ section('97. Canvas DPR Scaling');
     assert(testDPR(undefined) === 1, 'undefined DPR defaults to 1');
     assert(testDPR(0) === 1, 'DPR 0 treated as falsy, defaults to 1');
 
-    // Canvas dimensions = CSS dimensions * DPR
-    const cssW = 412, cssH = 915; // typical phone
+    // Viewport scale (cover mode — fill screen, crop edges if aspect differs)
+    function computeScale(screenW, screenH) {
+        return Math.max(screenW / VIEW_W, screenH / VIEW_H);
+    }
+
+    // Phone (412x915, portrait): scale by height
+    const phoneScale = computeScale(412, 915);
+    assertApprox(phoneScale, 915 / VIEW_H, 0.01, 'phone scales by height (taller than reference)');
+
+    // Tablet (1024x768, landscape): scale by width
+    const tabScale = computeScale(1024, 768);
+    assertApprox(tabScale, 1024 / VIEW_W, 0.01, 'tablet scales by width (wider than reference)');
+
+    // Both see VIEW_W x VIEW_H game units
+    assert(VIEW_W === 412, 'game viewport width is 412');
+    assert(VIEW_H === 732, 'game viewport height is 732');
+
+    // Touch coordinate conversion: screen → game viewport
+    const scale = computeScale(1024, 768);
+    const offX = (1024 - VIEW_W * scale) / 2;
+    const offY = (768 - VIEW_H * scale) / 2;
+    const gameX = (512 - offX) / scale; // center of tablet screen
+    const gameY = (384 - offY) / scale;
+    assert(gameX >= 0 && gameX <= VIEW_W, 'converted X within viewport');
+    assert(gameY >= 0 && gameY <= VIEW_H, 'converted Y within viewport');
+
+    // Canvas physical pixels = screen CSS pixels * DPR
     const dpr = testDPR(3); // S23 Ultra, capped to 2
-    const canvasW = cssW * dpr;
-    const canvasH = cssH * dpr;
-    assert(canvasW === 824, 'canvas width = CSS width * 2');
-    assert(canvasH === 1830, 'canvas height = CSS height * 2');
+    const canvasW = 412 * dpr;
+    const canvasH = 915 * dpr;
+    assert(canvasW === 824, 'canvas width = screen CSS width * DPR');
+    assert(canvasH === 1830, 'canvas height = screen CSS height * DPR');
 }
 
 console.log(`\n${'='.repeat(50)}`);
