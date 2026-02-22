@@ -34,6 +34,41 @@ const WEAPON_TIMER = 1200;
 const HOMING_TURN = 0.10;
 const STREAK_WINDOW = 240;
 const STREAK_NAMES = ['','','DOUBLE KILL','TRIPLE KILL','MULTI KILL','MEGA KILL','ULTRA KILL','MONSTER KILL'];
+const LOADOUT_POINTS = 3;
+const PERKS = [
+    {id:'shield',    pts:1, pvp:{shield:1}},
+    {id:'firerate',  pts:1, pvp:{fireMul:0.92}},
+    {id:'thrust',    pts:1, pvp:{thrustMul:1.05}},
+    {id:'hull',      pts:2, pvp:{lives:1}},
+    {id:'scavenger', pts:1, pvp:{wpnMul:1.15}},
+    {id:'respawn',   pts:1, pvp:{respawnMul:0.85}},
+];
+function getServerPerks(equippedIds) {
+    const bonuses = { shield:0, fireMul:1, thrustMul:1, lives:0, wpnMul:1, respawnMul:1 };
+    if (!Array.isArray(equippedIds)) return bonuses;
+    // Validate loadout budget
+    let pts = 0;
+    const validIds = [];
+    for (const pid of equippedIds) {
+        const perk = PERKS.find(p => p.id === pid);
+        if (!perk) continue;
+        if (pts + perk.pts > LOADOUT_POINTS) continue;
+        if (validIds.includes(pid)) continue; // no duplicates
+        pts += perk.pts;
+        validIds.push(pid);
+    }
+    for (const pid of validIds) {
+        const perk = PERKS.find(p => p.id === pid);
+        const fx = perk.pvp;
+        if (fx.shield) bonuses.shield += fx.shield;
+        if (fx.fireMul) bonuses.fireMul *= fx.fireMul;
+        if (fx.thrustMul) bonuses.thrustMul *= fx.thrustMul;
+        if (fx.lives) bonuses.lives += fx.lives;
+        if (fx.wpnMul) bonuses.wpnMul *= fx.wpnMul;
+        if (fx.respawnMul) bonuses.respawnMul *= fx.respawnMul;
+    }
+    return bonuses;
+}
 const MAPS = {
     caves:    { name:'THE CAVES',      w:3600, h:2000 },
     canyon:   { name:'DEEP CANYON',     w:2800, h:2800 },
@@ -237,7 +272,7 @@ class Room {
         this.code = code;
         this.mapKey = mapKey;
         this.isPublic = !!isPublic;
-        this.lobbyPlayers = [{ ws: creatorWs, name: creatorName, index: 0, color: COLORS[0], ready: false }];
+        this.lobbyPlayers = [{ ws: creatorWs, name: creatorName, index: 0, color: COLORS[0], ready: false, skin: 'default', trail: 'default', perks: [] }];
         this.creatorWs = creatorWs;
         this.running = false;
         this.autoTimer = null; // 60s countdown interval
@@ -264,7 +299,7 @@ class Room {
     addPlayer(ws, name) {
         if (this.lobbyPlayers.length >= 8) return -1;
         const idx = this.lobbyPlayers.length;
-        this.lobbyPlayers.push({ ws, name, index: idx, color: COLORS[idx], ready: false });
+        this.lobbyPlayers.push({ ws, name, index: idx, color: COLORS[idx], ready: false, skin: 'default', trail: 'default', perks: [] });
         this.checkAutoCountdown();
         return idx;
     }
@@ -401,22 +436,24 @@ class Room {
         this.playerInputs = [];
         for (let i = 0; i < this.lobbyPlayers.length; i++) {
             const bs = sb.bases[i];
+            const perkBonuses = getServerPerks(this.lobbyPlayers[i].perks);
             this.players.push({
                 id: i,
                 x: bs.x + (bs.w || BASE_W) / 2,
                 y: bs.y - SHIP_SZ,
                 vx: 0, vy: 0,
                 angle: -Math.PI / 2,
-                lives: LIVES, alive: true, respawnT: 0, invT: 0, score: 0,
+                lives: LIVES + perkBonuses.lives, alive: true, respawnT: 0, invT: 0, score: 0,
                 color: COLORS[i], name: this.lobbyPlayers[i].name,
                 spawnX: bs.x + (bs.w || BASE_W) / 2,
                 spawnY: bs.y - SHIP_SZ,
                 base: { x: bs.x, y: bs.y, w: bs.w || BASE_W, h: bs.h || BASE_H },
                 landed: true, landedTimer: 120,
                 disconnected: false,
-                weapon: 'normal', shield: 1, weaponTimer: 0, flashTimer: 0,
+                weapon: 'normal', shield: 1 + perkBonuses.shield, weaponTimer: 0, flashTimer: 0,
                 streak: 0, lastKillFrame: -999,
-                thrusting: false, revThrusting: false, firing: false, fireCd: 0
+                thrusting: false, revThrusting: false, firing: false, fireCd: 0,
+                perkBonuses: perkBonuses
             });
             this.playerInputs.push({ rot: 0, thrust: false, revThrust: false, fire: false });
         }
@@ -439,7 +476,7 @@ class Room {
             worldH: mapData.worldH,
             spawns: sb.spawns,
             bases: sb.bases,
-            players: this.lobbyPlayers.map(p => ({ name: p.name, color: p.color, index: p.index }))
+            players: this.lobbyPlayers.map(p => ({ name: p.name, color: p.color, index: p.index, skin: p.skin || 'default', trail: p.trail || 'default' }))
         };
         this.broadcast(startData);
 
@@ -480,13 +517,14 @@ class Room {
             p.revThrusting = inp.revThrust;
             p.firing = inp.fire;
 
+            const tMul = (p.perkBonuses && p.perkBonuses.thrustMul) || 1;
             if (p.thrusting) {
-                p.vx += Math.cos(p.angle) * THRUST;
-                p.vy += Math.sin(p.angle) * THRUST;
+                p.vx += Math.cos(p.angle) * THRUST * tMul;
+                p.vy += Math.sin(p.angle) * THRUST * tMul;
             }
             if (p.revThrusting) {
-                p.vx -= Math.cos(p.angle) * REV_THRUST;
-                p.vy -= Math.sin(p.angle) * REV_THRUST;
+                p.vx -= Math.cos(p.angle) * REV_THRUST * tMul;
+                p.vy -= Math.sin(p.angle) * REV_THRUST * tMul;
             }
 
             p.vy += this.mapGrav;
@@ -727,20 +765,21 @@ class Room {
     fireBullets(p, pi) {
         const a = p.angle, bx = p.x + Math.cos(a) * SHIP_SZ * 1.5, by = p.y + Math.sin(a) * SHIP_SZ * 1.5;
         const vbx = p.vx * .3, vby = p.vy * .3;
+        const fMul = (p.perkBonuses && p.perkBonuses.fireMul) || 1;
         switch (p.weapon) {
             case 'spread':
                 for (const off of [-0.3, -0.15, 0, 0.15, 0.3]) {
                     const sa = a + off;
                     this.bullets.push({ x: bx, y: by, vx: Math.cos(sa) * BULLET_SPD * 1.05 + vbx, vy: Math.sin(sa) * BULLET_SPD * 1.05 + vby, owner: pi, life: BULLET_LIFE * 0.8, color: p.color, sz: 2.5 });
                 }
-                p.fireCd = FIRE_CD; break;
+                p.fireCd = Math.floor(FIRE_CD * fMul); break;
             case 'rapid':
                 this.bullets.push({ x: bx + Math.cos(a + Math.PI / 2) * 3, y: by + Math.sin(a + Math.PI / 2) * 3, vx: Math.cos(a) * BULLET_SPD * 1.15 + vbx, vy: Math.sin(a) * BULLET_SPD * 1.15 + vby, owner: pi, life: BULLET_LIFE, color: p.color, sz: 2 });
                 this.bullets.push({ x: bx + Math.cos(a - Math.PI / 2) * 3, y: by + Math.sin(a - Math.PI / 2) * 3, vx: Math.cos(a) * BULLET_SPD * 1.15 + vbx, vy: Math.sin(a) * BULLET_SPD * 1.15 + vby, owner: pi, life: BULLET_LIFE, color: p.color, sz: 2 });
-                p.fireCd = Math.floor(FIRE_CD * 0.4); break;
+                p.fireCd = Math.floor(FIRE_CD * 0.4 * fMul); break;
             case 'heavy':
                 this.bullets.push({ x: bx, y: by, vx: Math.cos(a) * BULLET_SPD * 0.9 + vbx, vy: Math.sin(a) * BULLET_SPD * 0.9 + vby, owner: pi, life: Math.floor(BULLET_LIFE * 1.5), color: p.color, sz: 7, heavy: true, pierce: 1 });
-                p.fireCd = Math.floor(FIRE_CD * 1.2); break;
+                p.fireCd = Math.floor(FIRE_CD * 1.2 * fMul); break;
             case 'laser':
                 this.beams.push({ x: p.x, y: p.y, angle: a, owner: pi, life: BEAM_DUR, maxLife: BEAM_DUR, color: p.color, hitCd: 0 });
                 p.fireCd = BEAM_DUR + BEAM_CD;
@@ -751,13 +790,13 @@ class Room {
                     const j = (Math.random() - 0.5) * 0.12;
                     this.bullets.push({ x: bx, y: by, vx: Math.cos(a + j) * BULLET_SPD * 1.05 + vbx, vy: Math.sin(a + j) * BULLET_SPD * 1.05 + vby, owner: pi, life: Math.floor(BULLET_LIFE * 0.8), color: p.color, sz: 2.5 });
                 }
-                p.fireCd = Math.floor(FIRE_CD * 1.3); break;
+                p.fireCd = Math.floor(FIRE_CD * 1.3 * fMul); break;
             case 'homing':
                 this.bullets.push({ x: bx, y: by, vx: Math.cos(a) * BULLET_SPD * 0.9 + vbx, vy: Math.sin(a) * BULLET_SPD * 0.9 + vby, owner: pi, life: Math.floor(BULLET_LIFE * 1.5), color: p.color, sz: 3.5, homing: true });
-                p.fireCd = Math.floor(FIRE_CD * 1.1); break;
+                p.fireCd = Math.floor(FIRE_CD * 1.1 * fMul); break;
             default:
                 this.bullets.push({ x: bx, y: by, vx: Math.cos(a) * BULLET_SPD + vbx, vy: Math.sin(a) * BULLET_SPD + vby, owner: pi, life: BULLET_LIFE, color: p.color, sz: 2.5 });
-                p.fireCd = Math.floor(FIRE_CD / 1.5); // stock fires 1.5x faster (9 frames vs powerup base 14)
+                p.fireCd = Math.floor(FIRE_CD / 1.5 * fMul); // stock fires 1.5x faster (9 frames vs powerup base 14)
         }
         this.emitEvent({ t: 'e', n: 'shoot', x: bx, y: by });
     }
@@ -771,7 +810,8 @@ class Room {
             this.emitEvent({ t: 'e', n: 'shieldHit', x: p.x, y: p.y });
             return;
         }
-        p.alive = false; p.lives--; p.respawnT = RESPAWN_T; p.vx = 0; p.vy = 0; p.landed = false;
+        const rMul = (p.perkBonuses && p.perkBonuses.respawnMul) || 1;
+        p.alive = false; p.lives--; p.respawnT = Math.floor(RESPAWN_T * rMul); p.vx = 0; p.vy = 0; p.landed = false;
         if (this.playerDeaths[p.id] !== undefined) this.playerDeaths[p.id]++;
         p.weapon = 'normal'; p.shield = 0; p.weaponTimer = 0;
         this.emitEvent({ t: 'e', n: 'kill', i: p.id, x: p.x, y: p.y });
@@ -796,10 +836,12 @@ class Room {
     respawnPlayer(p) {
         p.x = p.spawnX; p.y = p.spawnY; p.vx = 0; p.vy = 0; p.angle = -Math.PI / 2;
         p.alive = true; p.invT = INVINCE_T; p.landed = true; p.landedTimer = 60;
-        p.shield = 1;
+        const shBonus = (p.perkBonuses && p.perkBonuses.shield) || 0;
+        p.shield = 1 + shBonus;
         for (const be of this.baseExps) {
             if (be.owner === p.id && be.t < be.dur && dist(p.x, p.y, be.x, be.y, this.worldW) < RESPAWN_KILL_R) {
-                p.alive = false; p.lives--; p.respawnT = Math.floor(RESPAWN_T / 2); p.shield = 0;
+                const rMul = (p.perkBonuses && p.perkBonuses.respawnMul) || 1;
+                p.alive = false; p.lives--; p.respawnT = Math.floor(RESPAWN_T / 2 * rMul); p.shield = 0;
                 this.emitEvent({ t: 'e', n: 'bugKill', i: p.id, x: p.x, y: p.y });
                 this.checkGameEnd();
                 return;
@@ -859,7 +901,10 @@ class Room {
     applyPickup(p, type) {
         if (type === 'heart') { p.lives = (p.lives || 0) + 1; }
         else if (type === 'shield') { p.shield = (p.shield || 0) + 1; }
-        else { p.weapon = type; p.weaponTimer = WEAPON_TIMER; }
+        else {
+            const wMul = (p.perkBonuses && p.perkBonuses.wpnMul) || 1;
+            p.weapon = type; p.weaponTimer = Math.floor(WEAPON_TIMER * wMul);
+        }
         this.emitEvent({ t: 'e', n: 'pickup', i: p.id, x: p.x, y: p.y });
     }
 
@@ -929,6 +974,10 @@ wss.on('connection', (ws) => {
                 do { code = randomCode(); } while (rooms.has(code));
                 const isPublic = !!data.pub;
                 const room = new Room(code, data.map, ws, data.name || 'HOST', isPublic);
+                // Store cosmetic data from creator
+                if (data.skin) room.lobbyPlayers[0].skin = data.skin;
+                if (data.trail) room.lobbyPlayers[0].trail = data.trail;
+                if (data.perks) room.lobbyPlayers[0].perks = data.perks;
                 rooms.set(code, room);
                 wsRoomMap.set(ws, code);
                 room.broadcastLobby();
@@ -943,6 +992,10 @@ wss.on('connection', (ws) => {
                 if (room.lobbyPlayers.length >= 8) { ws.send(JSON.stringify({ t: 'error', msg: 'Room is full' })); return; }
                 const idx = room.addPlayer(ws, data.name || 'PLAYER');
                 if (idx < 0) { ws.send(JSON.stringify({ t: 'error', msg: 'Could not join' })); return; }
+                // Store cosmetic data from joiner
+                if (data.skin) room.lobbyPlayers[idx].skin = data.skin;
+                if (data.trail) room.lobbyPlayers[idx].trail = data.trail;
+                if (data.perks) room.lobbyPlayers[idx].perks = data.perks;
                 wsRoomMap.set(ws, code);
                 room.broadcastLobby();
                 console.log(`Player joined ${code} (${room.lobbyPlayers.length} players)`);

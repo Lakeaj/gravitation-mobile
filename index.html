@@ -46,6 +46,10 @@ input[type=text]::placeholder{color:#555;text-transform:none}
 <button class="btn" onclick="showMultiplayer()">MULTIPLAYER</button>
 <button class="btn" style="opacity:.7;border-color:#555;color:#999" onclick="showSolo()">PRACTICE</button>
 <div style="display:flex;gap:.4em;margin-top:.8em">
+<button class="btn sm" onclick="showPerkShop()">🛡 LOADOUT</button>
+<button class="btn sm" onclick="showCosmeticShop()">🎨 SHOP</button>
+</div>
+<div style="display:flex;gap:.4em;margin-top:.3em">
 <button class="btn sm" onclick="showSettings()">⚙ SETTINGS</button>
 <button class="btn sm" onclick="showStats()">📊 STATS</button>
 </div>
@@ -199,6 +203,29 @@ Land on bases to refuel · Collect weapons · Survive!
 <button class="btn sm" onclick="showMenu()">BACK</button>
 </div>
 
+<!-- XP PERKS SHOP -->
+<div class="overlay" id="perkShopScreen">
+<h2>🛡 LOADOUT</h2>
+<div id="perkXPDisplay" style="color:#ff9900;font-size:clamp(.8rem,2.5vw,1rem);margin:.3em 0;text-align:center"></div>
+<div id="perkPointDisplay" style="color:#888;font-size:clamp(.65rem,2vw,.85rem);margin:.2em 0;text-align:center"></div>
+<div id="perkList" style="width:min(360px,90vw);margin:.5em auto;max-height:55vh;overflow-y:auto"></div>
+<div class="sub" style="margin-top:.5em;color:#666">Perks are reduced in PVP multiplayer for balance</div>
+<button class="btn sm" onclick="showMenu()">BACK</button>
+</div>
+
+<!-- PREMIUM COSMETIC SHOP -->
+<div class="overlay" id="cosmeticShopScreen">
+<h2>🎨 COSMETICS</h2>
+<div id="coinDisplay" style="color:#ffcc00;font-size:clamp(.8rem,2.5vw,1rem);margin:.3em 0;text-align:center"></div>
+<div style="display:flex;gap:.4em;margin:.5em 0;justify-content:center">
+<button class="btn sm" id="skinTabBtn" onclick="showCosmeticTab('skins')">SHIPS</button>
+<button class="btn sm" id="trailTabBtn" onclick="showCosmeticTab('trails')">TRAILS</button>
+</div>
+<div id="cosmeticList" style="width:min(360px,90vw);margin:.5em auto;max-height:55vh;overflow-y:auto"></div>
+<div class="sub" style="margin-top:.4em;color:#555">Cosmetics are visual only — no gameplay advantage</div>
+<button class="btn sm" onclick="showMenu()">BACK</button>
+</div>
+
 <canvas id="c"></canvas>
 
 <script>
@@ -334,6 +361,91 @@ try { const _p = JSON.parse(localStorage.getItem('gravStats')); if (_p) Object.a
 let dailyProgress = {homingKills:0,flawlessWin:false,uniqueLandings:0,survWave:0,gameKills:0,gamePickups:0,gameStreak:0};
 let scoreFloats = []; // {x,y,text,color,timer} — floating score numbers
 let sessionStart = Date.now();
+
+// ---------- PERKS SYSTEM ----------
+const LOADOUT_POINTS = 3; // max equippable perk points
+const PERKS = [
+    {id:'shield',    name:'REINFORCED SHIELD', icon:'🛡', desc:'Start with +1 shield',          cost:200,  pts:1, solo:{shield:1},     pvp:{shield:1}},
+    {id:'firerate',  name:'QUICK LOADER',      icon:'⚡', desc:'Faster fire rate',               cost:300,  pts:1, solo:{fireMul:0.85}, pvp:{fireMul:0.92}},
+    {id:'thrust',    name:'BOOST JETS',        icon:'🔥', desc:'More thrust power',              cost:300,  pts:1, solo:{thrustMul:1.10},pvp:{thrustMul:1.05}},
+    {id:'hull',      name:'THICK HULL',        icon:'💎', desc:'+1 extra life',                  cost:500,  pts:2, solo:{lives:1},      pvp:{lives:1}},
+    {id:'scavenger', name:'SCAVENGER',         icon:'🧲', desc:'Weapons last longer',            cost:400,  pts:1, solo:{wpnMul:1.25},  pvp:{wpnMul:1.15}},
+    {id:'respawn',   name:'QUICK RESPAWN',     icon:'⏱', desc:'Faster respawn',                 cost:250,  pts:1, solo:{respawnMul:0.7},pvp:{respawnMul:0.85}},
+];
+
+// ---------- COSMETIC SHOP ----------
+const SHIP_SKINS = [
+    {id:'default', name:'STANDARD',    desc:'Classic arrowhead',           price:0,    color:null, free:true},
+    {id:'neon',    name:'NEON',         desc:'Glowing neon outline',       price:99,   color:'#00ffff'},
+    {id:'stealth', name:'STEALTH',      desc:'Dark angular silhouette',    price:99,   color:'#334455'},
+    {id:'phoenix', name:'PHOENIX',      desc:'Fiery wing tips',            price:199,  color:'#ff4400'},
+    {id:'gold',    name:'GOLD',         desc:'Shimmering gold hull',       price:199,  color:'#ffcc00'},
+    {id:'ghost',   name:'GHOST',        desc:'Translucent phantom ship',   price:149,  color:'#8866ff'},
+];
+const TRAIL_EFFECTS = [
+    {id:'default', name:'STANDARD',    desc:'Default exhaust',             price:0,    free:true},
+    {id:'ice',     name:'ICE',         desc:'Blue ice crystals',           price:99,   colors:['#88ddff','#aaeeff','#ccf4ff']},
+    {id:'fire',    name:'INFERNO',     desc:'Raging fire exhaust',         price:99,   colors:['#ff2200','#ff6600','#ffaa00']},
+    {id:'plasma',  name:'PLASMA',      desc:'Purple plasma stream',        price:149,  colors:['#aa44ff','#cc66ff','#8822dd']},
+    {id:'rainbow', name:'RAINBOW',     desc:'Color-cycling exhaust',       price:199,  colors:null, rainbow:true},
+    {id:'toxic',   name:'TOXIC',       desc:'Green acid trail',            price:99,   colors:['#44ff00','#88ff44','#aaff88']},
+];
+
+// Player shop data (persisted)
+let shopData = {
+    unlockedPerks: [],     // perk ids unlocked with XP
+    equippedPerks: [],     // perk ids currently equipped (max LOADOUT_POINTS)
+    ownedSkins: ['default'],
+    ownedTrails: ['default'],
+    activeSkin: 'default',
+    activeTrail: 'default',
+    coins: 0              // premium currency (cents) — mock for now
+};
+try { const _sh = JSON.parse(localStorage.getItem('gravShop')); if (_sh) Object.assign(shopData, _sh); } catch(e){}
+function saveShop() { try { localStorage.setItem('gravShop', JSON.stringify(shopData)); } catch(e){} }
+
+// Calculate total XP ever earned (for spending — NOT the leveling XP)
+function totalXPEarned() {
+    let total = playerStats.xp; // current towards next level
+    for (let lv = 1; lv < playerStats.level; lv++) total += xpForLevel(lv);
+    return total;
+}
+// Spendable XP = total earned minus total already spent on perks
+function spendableXP() {
+    let spent = 0;
+    for (const pid of shopData.unlockedPerks) {
+        const p = PERKS.find(pk => pk.id === pid);
+        if (p) spent += p.cost;
+    }
+    return totalXPEarned() - spent;
+}
+// Get active perk bonuses for current mode
+function getActivePerks(isPvp) {
+    const bonuses = { shield:0, fireMul:1, thrustMul:1, lives:0, wpnMul:1, respawnMul:1 };
+    for (const pid of shopData.equippedPerks) {
+        const perk = PERKS.find(p => p.id === pid);
+        if (!perk || !shopData.unlockedPerks.includes(pid)) continue;
+        const fx = isPvp ? perk.pvp : perk.solo;
+        if (fx.shield) bonuses.shield += fx.shield;
+        if (fx.fireMul) bonuses.fireMul *= fx.fireMul;
+        if (fx.thrustMul) bonuses.thrustMul *= fx.thrustMul;
+        if (fx.lives) bonuses.lives += fx.lives;
+        if (fx.wpnMul) bonuses.wpnMul *= fx.wpnMul;
+        if (fx.respawnMul) bonuses.respawnMul *= fx.respawnMul;
+    }
+    return bonuses;
+}
+function equippedPoints() {
+    let pts = 0;
+    for (const pid of shopData.equippedPerks) {
+        const p = PERKS.find(pk => pk.id === pid);
+        if (p) pts += p.pts;
+    }
+    return pts;
+}
+
+// Active perk bonuses for the current game (set in beginGame)
+let activeBonuses = { shield:0, fireMul:1, thrustMul:1, lives:0, wpnMul:1, respawnMul:1 };
 
 // ---------- MUSIC STATE ----------
 let musicPlaying = false, musicNodes = [], musicInterval = null;
@@ -760,7 +872,7 @@ function doCreate(mapKey) {
     document.getElementById('createErr').textContent = '';
     lobbyMap = mapKey;
     wsConnect(() => {
-        ws.send(JSON.stringify({ t:'create', name: name, map: mapKey, pub: createPublic }));
+        ws.send(JSON.stringify({ t:'create', name: name, map: mapKey, pub: createPublic, perks: shopData.equippedPerks, skin: shopData.activeSkin, trail: shopData.activeTrail }));
         document.getElementById('createStatus').textContent = '';
     });
 }
@@ -772,7 +884,7 @@ function doJoin() {
     document.getElementById('joinStatus').textContent = 'Connecting...';
     document.getElementById('joinErr').textContent = '';
     wsConnect(() => {
-        ws.send(JSON.stringify({ t:'join', code: code, name: name }));
+        ws.send(JSON.stringify({ t:'join', code: code, name: name, perks: shopData.equippedPerks, skin: shopData.activeSkin, trail: shopData.activeTrail }));
         document.getElementById('joinStatus').textContent = '';
     });
 }
@@ -901,8 +1013,7 @@ function startSurvival(mapKey) {
         bases: [survivalSpawnData.bases[0]],
         players: [{name: survivalPlayerName}]
     });
-    players[0].lives = LIVES;
-    players[0].shield = 1;
+    // beginGame already applied perk bonuses — don't overwrite them
     setTimeout(() => { if (survivalMode && running) spawnSurvivalWave(1); }, 1200);
 }
 
@@ -926,7 +1037,8 @@ function spawnSurvivalWave(wave) {
         landed:human.landed, landedTimer:human.landedTimer, thrusting:human.thrusting,
         revThrusting:human.revThrusting, firing:human.firing, fireCd:human.fireCd,
         streak:human.streak, lastKillFrame:human.lastKillFrame, respawnT:human.respawnT,
-        weaponTimer:human.weaponTimer||0, flashTimer:human.flashTimer||0};
+        weaponTimer:human.weaponTimer||0, flashTimer:human.flashTimer||0,
+        skin:human.skin||'default', trail:human.trail||'default'};
     // Rebuild players array
     players = [];
     playerInputs = [];
@@ -942,7 +1054,8 @@ function spawnSurvivalWave(wave) {
         landed:hs.landed, landedTimer:hs.landedTimer,
         camX:hs.camX, camY:hs.camY, disconnected:false,
         weapon:hs.weapon, shield:hs.shield, streak:hs.streak, lastKillFrame:hs.lastKillFrame,
-        weaponTimer:hs.weaponTimer, flashTimer:hs.flashTimer
+        weaponTimer:hs.weaponTimer, flashTimer:hs.flashTimer,
+        skin:hs.skin, trail:hs.trail
     });
     playerInputs.push({rot:0, thrust:false, revThrust:false, fire:false});
 
@@ -1250,25 +1363,34 @@ function beginGame(data) {
     stars = data.stars || [];
     mapGrav = MAPS[lobbyMap]?.gravity || G;
 
+    // Apply perk bonuses for this game session
+    activeBonuses = getActivePerks(isMultiplayer);
+
     players = [];
     playerInputs = [];
     for (let i = 0; i < data.players.length; i++) {
         const sp = data.spawns[i], bs = data.bases[i];
         const baseTopY = bs.y; // land on top of base
+        // Only the local player (index 0 for host/solo) gets perk bonuses
+        const isLocal = (isHost && i === 0) || (!isHost && i === myIndex);
+        const pLives = isLocal ? LIVES + activeBonuses.lives : LIVES;
+        const pShield = isLocal ? 1 + activeBonuses.shield : 1;
         players.push({
             id: i, x: bs.x + (bs.w||BASE_W)/2, y: baseTopY - SHIP_SZ, vx: 0, vy: 0, angle: -Math.PI/2,
             rot: 0, thrusting: false, revThrusting: false, firing: false, fireCd: 0,
-            lives: LIVES, alive: true, respawnT: 0, invT: 0, score: 0,
+            lives: pLives, alive: true, respawnT: 0, invT: 0, score: 0,
             color: COLORS[i], name: data.players[i].name,
             spawnX: bs.x + (bs.w||BASE_W)/2, spawnY: baseTopY - SHIP_SZ,
             base: { x: bs.x, y: bs.y, w: bs.w || BASE_W, h: bs.h || BASE_H },
             landed: true, landedTimer: 120,
             camX: bs.x + (bs.w||BASE_W)/2, camY: baseTopY - SHIP_SZ,
             disconnected: false,
-            weapon: 'normal', shield: 1,
+            weapon: 'normal', shield: pShield,
             weaponTimer: 0, // countdown to weapon expiry
             flashTimer: 0, // hit flash effect
-            streak: 0, lastKillFrame: -999
+            streak: 0, lastKillFrame: -999,
+            skin: isLocal ? shopData.activeSkin : (data.players[i].skin || 'default'),
+            trail: isLocal ? shopData.activeTrail : (data.players[i].trail || 'default')
         });
         playerInputs.push({ rot: 0, thrust: false, revThrust: false, fire: false });
     }
@@ -1478,7 +1600,8 @@ function killPlayer(p, force) {
         doHaptic(30); // haptic feedback
         return;
     }
-    p.alive=false; p.lives--; p.respawnT=RESPAWN_T; p.vx=0; p.vy=0; p.landed=false;
+    const isLocalP = (isHost && p.id === 0) || (!isHost && p.id === myIndex);
+    p.alive=false; p.lives--; p.respawnT=Math.floor(RESPAWN_T * (isLocalP ? activeBonuses.respawnMul : 1)); p.vx=0; p.vy=0; p.landed=false;
     p.flashTimer = 0;
     if (playerDeaths[p.id] !== undefined) playerDeaths[p.id]++;
     p.weapon = 'normal'; p.shield = 0; p.weaponTimer = 0;
@@ -1521,11 +1644,13 @@ function awardKill(killer) {
 function respawnPlayer(p) {
     p.x=p.spawnX; p.y=p.spawnY; p.vx=0; p.vy=0; p.angle=-Math.PI/2;
     p.alive=true; p.invT=INVINCE_T; p.landed=true; p.landedTimer=60;
-    p.shield = 1; // spawn shield
+    const isLocalS = (isHost && p.id === 0) || (!isHost && p.id === myIndex);
+    p.shield = 1 + (isLocalS ? activeBonuses.shield : 0); // spawn shield + perk bonus
     // THE BUG — base kamikaze bypasses shield
     for (const be of baseExps) {
         if (be.owner===p.id && be.t<be.dur && dist(p.x,p.y,be.x,be.y)<RESPAWN_KILL_R) {
-            p.alive=false; p.lives--; p.respawnT=Math.floor(RESPAWN_T/2); p.shield=0;
+            const isLocalR = (isHost && p.id === 0) || (!isHost && p.id === myIndex);
+            p.alive=false; p.lives--; p.respawnT=Math.floor(RESPAWN_T/2 * (isLocalR ? activeBonuses.respawnMul : 1)); p.shield=0;
             boom(p.x,p.y,'#ffffff',1.5);
             emitEvent({t:'e',n:'bugKill',i:p.id,x:p.x,y:p.y});
             for (let i=0;i<10;i++) particles.push({x:p.x,y:p.y,vx:(Math.random()-.5)*8,vy:(Math.random()-.5)*8,life:30,maxLife:30,color:'#ffffff',size:3});
@@ -1646,7 +1771,8 @@ function applyPickup(p, type) {
         p.shield = (p.shield || 0) + 1;
     } else {
         p.weapon = type;
-        p.weaponTimer = WEAPON_TIMER; // weapon expires after 20 seconds
+        const isLocalW = (isHost && p.id === 0) || (!isHost && p.id === myIndex);
+        p.weaponTimer = Math.floor(WEAPON_TIMER * (isLocalW ? activeBonuses.wpnMul : 1)); // weapon expires (perk can extend)
     }
     boom(p.x, p.y, PICKUP_TYPES.find(t=>t.id===type)?.color||'#fff', 0.8);
     emitEvent({t:'e',n:'pickup',i:p.id,x:p.x,y:p.y});
@@ -1664,6 +1790,9 @@ const BEAM_HIT_INTERVAL = 8; // check hits every N frames
 function fireBullets(p, pi) {
     const a = p.angle, bx = p.x+Math.cos(a)*SHIP_SZ*1.5, by = p.y+Math.sin(a)*SHIP_SZ*1.5;
     const vbx = p.vx*.3, vby = p.vy*.3;
+    // Fire rate perk multiplier (only for local player)
+    const isLocalF = (isHost && pi === 0) || (!isHost && pi === myIndex);
+    const fMul = isLocalF ? activeBonuses.fireMul : 1;
     switch (p.weapon) {
         case 'spread':
             // 5-way fan — wider spread, more bullets
@@ -1671,16 +1800,16 @@ function fireBullets(p, pi) {
                 const sa = a+off;
                 bullets.push({x:bx,y:by,vx:Math.cos(sa)*BULLET_SPD*1.05+vbx,vy:Math.sin(sa)*BULLET_SPD*1.05+vby,owner:pi,life:BULLET_LIFE*0.8,color:p.color,sz:2.5});
             }
-            p.fireCd = FIRE_CD; break;
+            p.fireCd = Math.floor(FIRE_CD * fMul); break;
         case 'rapid':
             // Twin shots, 2.5x fire rate
             bullets.push({x:bx+Math.cos(a+Math.PI/2)*3,y:by+Math.sin(a+Math.PI/2)*3,vx:Math.cos(a)*BULLET_SPD*1.15+vbx,vy:Math.sin(a)*BULLET_SPD*1.15+vby,owner:pi,life:BULLET_LIFE,color:p.color,sz:2});
             bullets.push({x:bx+Math.cos(a-Math.PI/2)*3,y:by+Math.sin(a-Math.PI/2)*3,vx:Math.cos(a)*BULLET_SPD*1.15+vbx,vy:Math.sin(a)*BULLET_SPD*1.15+vby,owner:pi,life:BULLET_LIFE,color:p.color,sz:2});
-            p.fireCd = Math.floor(FIRE_CD*0.4); break;
+            p.fireCd = Math.floor(FIRE_CD*0.4 * fMul); break;
         case 'heavy':
             // Massive cannonball — big, pierces one target
             bullets.push({x:bx,y:by,vx:Math.cos(a)*BULLET_SPD*0.9+vbx,vy:Math.sin(a)*BULLET_SPD*0.9+vby,owner:pi,life:Math.floor(BULLET_LIFE*1.5),color:p.color,sz:7,heavy:true,pierce:1});
-            p.fireCd = Math.floor(FIRE_CD*1.2); break;
+            p.fireCd = Math.floor(FIRE_CD*1.2 * fMul); break;
         case 'laser':
             // Continuous beam — balanced duration and range
             beams.push({x:p.x,y:p.y,angle:a,owner:pi,life:LASER_DUR,maxLife:LASER_DUR,color:p.color,hitCd:0});
@@ -1691,14 +1820,14 @@ function fireBullets(p, pi) {
             // 7-bullet shotgun blast
             for(let n=0;n<7;n++){const j=(Math.random()-0.5)*0.12;
             bullets.push({x:bx,y:by,vx:Math.cos(a+j)*BULLET_SPD*1.05+vbx,vy:Math.sin(a+j)*BULLET_SPD*1.05+vby,owner:pi,life:Math.floor(BULLET_LIFE*0.8),color:p.color,sz:2.5});}
-            p.fireCd = Math.floor(FIRE_CD*1.3); break;
+            p.fireCd = Math.floor(FIRE_CD*1.3 * fMul); break;
         case 'homing':
             // Fast aggressive tracker
             bullets.push({x:bx,y:by,vx:Math.cos(a)*BULLET_SPD*0.9+vbx,vy:Math.sin(a)*BULLET_SPD*0.9+vby,owner:pi,life:Math.floor(BULLET_LIFE*1.5),color:p.color,sz:3.5,homing:true});
-            p.fireCd = Math.floor(FIRE_CD*1.1); break;
+            p.fireCd = Math.floor(FIRE_CD*1.1 * fMul); break;
         default: // normal
             bullets.push({x:bx,y:by,vx:Math.cos(a)*BULLET_SPD+vbx,vy:Math.sin(a)*BULLET_SPD+vby,owner:pi,life:BULLET_LIFE,color:p.color,sz:2.5});
-            p.fireCd = Math.floor(FIRE_CD / 1.5); // stock fires 1.5x faster (9 frames vs powerup base 14)
+            p.fireCd = Math.floor(FIRE_CD / 1.5 * fMul); // stock fires 1.5x faster (perk can reduce further)
     }
     emitEvent({t:'e',n:'shoot',x:bx,y:by});
 }
@@ -1751,20 +1880,34 @@ function hostUpdate() {
         p.revThrusting = inp.revThrust;
         p.firing = inp.fire;
 
+        // Thrust with perk multiplier for local player
+        const isLocalT = (isHost && pi === 0) || (!isHost && pi === myIndex);
+        const tMul = isLocalT ? activeBonuses.thrustMul : 1;
+        // Compute trail particle colors for this player
+        const pTrailId = p.trail || 'default';
+        const pTrailDef = typeof TRAIL_EFFECTS !== 'undefined' ? TRAIL_EFFECTS.find(t=>t.id===pTrailId) : null;
+        let pTCol1='#ff8800', pTCol2='#ffcc00', pRCol1='#4488ff', pRCol2='#88ccff';
+        if (pTrailDef && pTrailDef.rainbow) {
+            const hue=(frame*3)%360; pTCol1='hsl('+hue+',100%,50%)'; pTCol2='hsl('+((hue+40)%360)+',100%,70%)';
+            pRCol1=pTCol1; pRCol2=pTCol2;
+        } else if (pTrailDef && pTrailDef.colors) {
+            pTCol1=pTrailDef.colors[0]; pTCol2=pTrailDef.colors[1]||pTrailDef.colors[0];
+            pRCol1=pTrailDef.colors[1]||pTrailDef.colors[0]; pRCol2=pTrailDef.colors[2]||pTrailDef.colors[0];
+        }
         if (p.thrusting) {
-            p.vx += Math.cos(p.angle)*THRUST;
-            p.vy += Math.sin(p.angle)*THRUST;
+            p.vx += Math.cos(p.angle)*THRUST*tMul;
+            p.vy += Math.sin(p.angle)*THRUST*tMul;
             if (Math.random()>.3) {
                 const ba=p.angle+Math.PI;
-                particles.push({x:p.x+Math.cos(ba)*SHIP_SZ,y:p.y+Math.sin(ba)*SHIP_SZ,vx:Math.cos(ba)*(1+Math.random()*2)+p.vx*.3,vy:Math.sin(ba)*(1+Math.random()*2)+p.vy*.3,life:15+Math.random()*10,maxLife:15+Math.random()*10,color:Math.random()>.5?'#ff8800':'#ffcc00',size:Math.random()*3+1});
+                particles.push({x:p.x+Math.cos(ba)*SHIP_SZ,y:p.y+Math.sin(ba)*SHIP_SZ,vx:Math.cos(ba)*(1+Math.random()*2)+p.vx*.3,vy:Math.sin(ba)*(1+Math.random()*2)+p.vy*.3,life:15+Math.random()*10,maxLife:15+Math.random()*10,color:Math.random()>.5?pTCol1:pTCol2,size:Math.random()*3+1});
             }
         }
         if (p.revThrusting) {
-            p.vx -= Math.cos(p.angle)*REV_THRUST;
-            p.vy -= Math.sin(p.angle)*REV_THRUST;
+            p.vx -= Math.cos(p.angle)*REV_THRUST*tMul;
+            p.vy -= Math.sin(p.angle)*REV_THRUST*tMul;
             if (Math.random()>.5) {
                 const fa=p.angle; // flame from front
-                particles.push({x:p.x+Math.cos(fa)*SHIP_SZ,y:p.y+Math.sin(fa)*SHIP_SZ,vx:Math.cos(fa)*(1+Math.random()*1.5)+p.vx*.2,vy:Math.sin(fa)*(1+Math.random()*1.5)+p.vy*.2,life:10+Math.random()*8,maxLife:10+Math.random()*8,color:Math.random()>.5?'#4488ff':'#88ccff',size:Math.random()*2.5+0.8});
+                particles.push({x:p.x+Math.cos(fa)*SHIP_SZ,y:p.y+Math.sin(fa)*SHIP_SZ,vx:Math.cos(fa)*(1+Math.random()*1.5)+p.vx*.2,vy:Math.sin(fa)*(1+Math.random()*1.5)+p.vy*.2,life:10+Math.random()*8,maxLife:10+Math.random()*8,color:Math.random()>.5?pRCol1:pRCol2,size:Math.random()*2.5+0.8});
             }
         }
 
@@ -2002,8 +2145,10 @@ function clientUpdate() {
     const me = players[myIndex];
     if (me && me.alive && !me.landed) {
         me.angle += li.rot * ROT_SPD_MAX;
-        if (li.thrust) { me.vx += Math.cos(me.angle)*THRUST; me.vy += Math.sin(me.angle)*THRUST; me.thrusting = true; } else { me.thrusting = false; }
-        if (li.revThrust) { me.vx -= Math.cos(me.angle)*REV_THRUST; me.vy -= Math.sin(me.angle)*REV_THRUST; me.revThrusting = true; } else { me.revThrusting = false; }
+        const cThr = THRUST * activeBonuses.thrustMul;
+        const cRev = REV_THRUST * activeBonuses.thrustMul;
+        if (li.thrust) { me.vx += Math.cos(me.angle)*cThr; me.vy += Math.sin(me.angle)*cThr; me.thrusting = true; } else { me.thrusting = false; }
+        if (li.revThrust) { me.vx -= Math.cos(me.angle)*cRev; me.vy -= Math.sin(me.angle)*cRev; me.revThrusting = true; } else { me.revThrusting = false; }
         me.vy += mapGrav;
         me.vx *= 0.997; me.vy *= 0.997;
         const spd = Math.sqrt(me.vx*me.vx + me.vy*me.vy);
@@ -2027,7 +2172,7 @@ function clientUpdate() {
         if (me.y < SHIP_SZ) { me.y = SHIP_SZ; me.vy = Math.abs(me.vy) * 0.3; }
         if (me.y > worldH - SHIP_SZ) { me.y = worldH - SHIP_SZ; me.vy = -Math.abs(me.vy) * 0.3; }
     } else if (me && me.alive && me.landed) {
-        if (li.thrust) { me.landed = false; me.vy = -THRUST * 2; me.thrusting = true; } else { me.thrusting = false; }
+        if (li.thrust) { me.landed = false; me.vy = -THRUST * activeBonuses.thrustMul * 2; me.thrusting = true; } else { me.thrusting = false; }
         me.angle += li.rot * ROT_SPD_MAX;
         me.revThrusting = !!li.revThrust;
     }
@@ -2324,9 +2469,32 @@ function draw() {
         const flashing = pp.flashTimer && pp.flashTimer > 0;
         if (pp.invT&&Math.floor(frame/4)%2) ctx.globalAlpha=.4;
         if(!isMultiplayer){ctx.shadowColor=flashing?'#fff':pp.color;ctx.shadowBlur=10;}
-        ctx.fillStyle=flashing?'#fff':pp.color;ctx.beginPath();
-        ctx.moveTo(0,-SHIP_SZ);ctx.lineTo(-SHIP_SZ*.7,SHIP_SZ*.7);ctx.lineTo(0,SHIP_SZ*.3);ctx.lineTo(SHIP_SZ*.7,SHIP_SZ*.7);ctx.closePath();ctx.fill();
-        ctx.strokeStyle='#fff';ctx.lineWidth=1;ctx.stroke();
+        // Cosmetic skin rendering
+        const skinId = pp.skin || 'default';
+        const skinDef = SHIP_SKINS.find(s=>s.id===skinId);
+        const skinColor = (!flashing && skinDef && skinDef.color) ? skinDef.color : (flashing?'#fff':pp.color);
+        if (skinId==='neon' && !flashing) { ctx.shadowColor=skinDef.color; ctx.shadowBlur=18; }
+        if (skinId==='ghost' && !flashing) { ctx.globalAlpha=Math.max(ctx.globalAlpha*0.55, 0.2); }
+        ctx.fillStyle=skinColor;ctx.beginPath();
+        if (skinId==='stealth') {
+            // Angular stealth shape
+            ctx.moveTo(0,-SHIP_SZ*1.1);ctx.lineTo(-SHIP_SZ*.9,SHIP_SZ*.5);ctx.lineTo(-SHIP_SZ*.3,SHIP_SZ*.3);ctx.lineTo(0,SHIP_SZ*.6);ctx.lineTo(SHIP_SZ*.3,SHIP_SZ*.3);ctx.lineTo(SHIP_SZ*.9,SHIP_SZ*.5);ctx.closePath();
+        } else {
+            ctx.moveTo(0,-SHIP_SZ);ctx.lineTo(-SHIP_SZ*.7,SHIP_SZ*.7);ctx.lineTo(0,SHIP_SZ*.3);ctx.lineTo(SHIP_SZ*.7,SHIP_SZ*.7);ctx.closePath();
+        }
+        ctx.fill();
+        ctx.strokeStyle=(skinId==='gold'&&!flashing)?'#ffee88':'#fff';ctx.lineWidth=1;ctx.stroke();
+        // Phoenix wing-tip flames
+        if (skinId==='phoenix' && !flashing) {
+            ctx.fillStyle='#ff6600';ctx.globalAlpha=0.6+Math.sin(frame*0.15)*0.3;
+            ctx.beginPath();ctx.arc(-SHIP_SZ*.7,SHIP_SZ*.7,3,0,Math.PI*2);ctx.fill();
+            ctx.beginPath();ctx.arc(SHIP_SZ*.7,SHIP_SZ*.7,3,0,Math.PI*2);ctx.fill();
+            ctx.globalAlpha=1;
+        }
+        // Gold shimmer
+        if (skinId==='gold' && !flashing) {
+            ctx.fillStyle='rgba(255,238,136,'+(0.15+Math.sin(frame*0.1)*0.1)+')';ctx.fill();
+        }
         ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(0,-SHIP_SZ*.2,SHIP_SZ*.2,0,Math.PI*2);ctx.fill();
         // Color-blind shape indicator
         if (settings.colorBlind) {
@@ -2342,8 +2510,18 @@ function draw() {
         }
         if (pp.thrusting){
             const fs=SHIP_SZ*(.5+Math.random()*.5);
-            ctx.fillStyle='#ff8800';ctx.beginPath();ctx.moveTo(-SHIP_SZ*.3,SHIP_SZ*.5);ctx.lineTo(0,SHIP_SZ*.5+fs);ctx.lineTo(SHIP_SZ*.3,SHIP_SZ*.5);ctx.closePath();ctx.fill();
-            ctx.fillStyle='#ffcc00';ctx.beginPath();ctx.moveTo(-SHIP_SZ*.15,SHIP_SZ*.5);ctx.lineTo(0,SHIP_SZ*.5+fs*.6);ctx.lineTo(SHIP_SZ*.15,SHIP_SZ*.5);ctx.closePath();ctx.fill();
+            // Cosmetic trail colors
+            const trailId = pp.trail || 'default';
+            const trailDef = TRAIL_EFFECTS.find(t=>t.id===trailId);
+            let tCol1='#ff8800', tCol2='#ffcc00';
+            if (trailDef && trailDef.rainbow) {
+                const hue = (frame*3) % 360;
+                tCol1 = 'hsl('+hue+',100%,50%)'; tCol2 = 'hsl('+((hue+40)%360)+',100%,70%)';
+            } else if (trailDef && trailDef.colors) {
+                tCol1 = trailDef.colors[0]; tCol2 = trailDef.colors[1] || trailDef.colors[0];
+            }
+            ctx.fillStyle=tCol1;ctx.beginPath();ctx.moveTo(-SHIP_SZ*.3,SHIP_SZ*.5);ctx.lineTo(0,SHIP_SZ*.5+fs);ctx.lineTo(SHIP_SZ*.3,SHIP_SZ*.5);ctx.closePath();ctx.fill();
+            ctx.fillStyle=tCol2;ctx.beginPath();ctx.moveTo(-SHIP_SZ*.15,SHIP_SZ*.5);ctx.lineTo(0,SHIP_SZ*.5+fs*.6);ctx.lineTo(SHIP_SZ*.15,SHIP_SZ*.5);ctx.closePath();ctx.fill();
         }
         if (pp.landed){ctx.shadowBlur=0;ctx.fillStyle='rgba(0,255,100,0.6)';ctx.font='8px Courier New';ctx.textAlign='center';ctx.fillText('LANDED',0,SHIP_SZ+12);}
         // Invincibility countdown ring
@@ -2371,7 +2549,7 @@ function draw() {
                 ctx.shadowBlur=0;ctx.fillStyle=wpt.color;ctx.globalAlpha=.6;ctx.font='bold 7px Courier New';ctx.textAlign='center';
                 ctx.fillText(wpt.icon+' '+wpt.name,0,SHIP_SZ+22);
                 if (pp.weaponTimer > 0) {
-                    const barW=24,barH=3,fill=pp.weaponTimer/WEAPON_TIMER;
+                    const barW=24,barH=3,fill=Math.min(1,pp.weaponTimer/WEAPON_TIMER);
                     ctx.globalAlpha=.4;ctx.fillStyle='#333';ctx.fillRect(-barW/2,SHIP_SZ+25,barW,barH);
                     ctx.fillStyle=fill>0.3?wpt.color:'#ff4444';ctx.fillRect(-barW/2,SHIP_SZ+25,barW*fill,barH);
                 }
@@ -2832,6 +3010,177 @@ function showStats() {
         div.innerHTML = a.icon+' <b>'+a.name+'</b> \u2014 '+a.desc+(unlocked?' <span style="color:#33ff66">\u2714</span>':'');
         ab.appendChild(div);
     }
+}
+
+// =====================================================
+// PERK SHOP (XP-based loadout)
+// =====================================================
+function showPerkShop() {
+    showScreen('perkShopScreen');
+    renderPerkShop();
+}
+function renderPerkShop() {
+    const avail = spendableXP();
+    document.getElementById('perkXPDisplay').textContent = 'Available XP: ' + avail;
+    const used = equippedPoints();
+    document.getElementById('perkPointDisplay').innerHTML = 'Loadout: <span style="color:#ff6600">' + used + '/' + LOADOUT_POINTS + '</span> points used';
+    const list = document.getElementById('perkList');
+    list.innerHTML = '';
+    for (const perk of PERKS) {
+        const unlocked = shopData.unlockedPerks.includes(perk.id);
+        const equipped = shopData.equippedPerks.includes(perk.id);
+        const canAfford = avail >= perk.cost;
+        const canEquip = (used + perk.pts) <= LOADOUT_POINTS;
+
+        const div = document.createElement('div');
+        div.style.cssText = 'padding:.5em .7em;margin:.3em 0;border-radius:6px;border:1px solid '+(equipped?'#ff6600':unlocked?'#444':'#333')+';background:'+(equipped?'rgba(255,102,0,0.1)':'rgba(255,255,255,0.03)')+';display:flex;align-items:center;gap:.5em';
+
+        const info = document.createElement('div');
+        info.style.cssText = 'flex:1';
+        info.innerHTML = '<div style="color:'+(unlocked?'#ff9900':'#888')+';font-size:clamp(.75rem,2.3vw,.95rem);font-weight:bold">' +
+            perk.icon + ' ' + perk.name + ' <span style="color:#666;font-weight:normal;font-size:.8em">[' + perk.pts + 'pt]</span></div>' +
+            '<div style="color:#777;font-size:clamp(.6rem,1.8vw,.75rem);margin-top:.2em">' + perk.desc + '</div>' +
+            '<div style="color:#555;font-size:clamp(.5rem,1.5vw,.65rem);margin-top:.1em">Solo: ' + perkEffectStr(perk.solo) + ' · PVP: ' + perkEffectStr(perk.pvp) + '</div>';
+        div.appendChild(info);
+
+        const btn = document.createElement('button');
+        btn.className = 'btn sm';
+        btn.style.cssText = 'min-width:70px;font-size:clamp(.6rem,1.8vw,.8rem)';
+        if (!unlocked) {
+            btn.textContent = perk.cost + ' XP';
+            btn.disabled = !canAfford;
+            btn.onclick = () => { unlockPerk(perk.id); };
+        } else if (equipped) {
+            btn.textContent = 'UNEQUIP';
+            btn.style.borderColor = '#ff6600';
+            btn.onclick = () => { unequipPerk(perk.id); };
+        } else {
+            btn.textContent = 'EQUIP';
+            btn.disabled = !canEquip;
+            btn.onclick = () => { equipPerk(perk.id); };
+        }
+        div.appendChild(btn);
+        list.appendChild(div);
+    }
+}
+function perkEffectStr(fx) {
+    const parts = [];
+    if (fx.shield) parts.push('+' + fx.shield + ' shield');
+    if (fx.fireMul && fx.fireMul !== 1) parts.push(Math.round((1 - fx.fireMul) * 100) + '% faster fire');
+    if (fx.thrustMul && fx.thrustMul !== 1) parts.push('+' + Math.round((fx.thrustMul - 1) * 100) + '% thrust');
+    if (fx.lives) parts.push('+' + fx.lives + ' life');
+    if (fx.wpnMul && fx.wpnMul !== 1) parts.push('+' + Math.round((fx.wpnMul - 1) * 100) + '% weapon time');
+    if (fx.respawnMul && fx.respawnMul !== 1) parts.push(Math.round((1 - fx.respawnMul) * 100) + '% faster respawn');
+    return parts.join(', ') || 'none';
+}
+function unlockPerk(id) {
+    if (shopData.unlockedPerks.includes(id)) return;
+    const perk = PERKS.find(p => p.id === id);
+    if (!perk || spendableXP() < perk.cost) return;
+    shopData.unlockedPerks.push(id);
+    saveShop();
+    renderPerkShop();
+}
+function equipPerk(id) {
+    if (shopData.equippedPerks.includes(id)) return;
+    const perk = PERKS.find(p => p.id === id);
+    if (!perk || !shopData.unlockedPerks.includes(id)) return;
+    if (equippedPoints() + perk.pts > LOADOUT_POINTS) return;
+    shopData.equippedPerks.push(id);
+    saveShop();
+    renderPerkShop();
+}
+function unequipPerk(id) {
+    shopData.equippedPerks = shopData.equippedPerks.filter(p => p !== id);
+    saveShop();
+    renderPerkShop();
+}
+
+// =====================================================
+// COSMETIC SHOP (Premium — mock payments)
+// =====================================================
+let cosmeticTab = 'skins';
+function showCosmeticShop() {
+    showScreen('cosmeticShopScreen');
+    cosmeticTab = 'skins';
+    renderCosmeticShop();
+}
+function showCosmeticTab(tab) {
+    cosmeticTab = tab;
+    document.getElementById('skinTabBtn').style.opacity = tab === 'skins' ? '1' : '.5';
+    document.getElementById('trailTabBtn').style.opacity = tab === 'trails' ? '1' : '.5';
+    renderCosmeticShop();
+}
+function renderCosmeticShop() {
+    document.getElementById('coinDisplay').innerHTML = '💰 Balance: <span style="color:#ffcc00">$' + (shopData.coins / 100).toFixed(2) + '</span>';
+    document.getElementById('skinTabBtn').style.opacity = cosmeticTab === 'skins' ? '1' : '.5';
+    document.getElementById('trailTabBtn').style.opacity = cosmeticTab === 'trails' ? '1' : '.5';
+    const list = document.getElementById('cosmeticList');
+    list.innerHTML = '';
+    const items = cosmeticTab === 'skins' ? SHIP_SKINS : TRAIL_EFFECTS;
+    const owned = cosmeticTab === 'skins' ? shopData.ownedSkins : shopData.ownedTrails;
+    const active = cosmeticTab === 'skins' ? shopData.activeSkin : shopData.activeTrail;
+
+    for (const item of items) {
+        const isOwned = owned.includes(item.id) || item.free;
+        const isActive = active === item.id;
+        const div = document.createElement('div');
+        div.style.cssText = 'padding:.5em .7em;margin:.3em 0;border-radius:6px;border:1px solid '+(isActive?'#ffcc00':isOwned?'#444':'#333')+';background:'+(isActive?'rgba(255,204,0,0.08)':'rgba(255,255,255,0.03)')+';display:flex;align-items:center;gap:.5em';
+
+        // Preview swatch
+        const swatch = document.createElement('div');
+        if (cosmeticTab === 'skins') {
+            swatch.style.cssText = 'width:28px;height:28px;border-radius:50%;border:2px solid '+(item.color||'#00ccff')+';background:'+(item.color?'radial-gradient(circle,'+item.color+',#111)':'radial-gradient(circle,#00ccff,#111)');
+        } else {
+            const tc = item.rainbow ? '#ff0000' : (item.colors ? item.colors[0] : '#ff8800');
+            swatch.style.cssText = 'width:28px;height:28px;border-radius:4px;background:linear-gradient(180deg,'+tc+',#111)';
+            if (item.rainbow) swatch.style.background = 'linear-gradient(135deg,red,orange,yellow,green,blue,purple)';
+        }
+        div.appendChild(swatch);
+
+        const info = document.createElement('div');
+        info.style.cssText = 'flex:1';
+        info.innerHTML = '<div style="color:'+(isOwned?'#ffcc00':'#888')+';font-size:clamp(.75rem,2.3vw,.95rem);font-weight:bold">' + item.name + '</div>' +
+            '<div style="color:#666;font-size:clamp(.55rem,1.6vw,.7rem);margin-top:.15em">' + item.desc + '</div>';
+        div.appendChild(info);
+
+        const btn = document.createElement('button');
+        btn.className = 'btn sm';
+        btn.style.cssText = 'min-width:65px;font-size:clamp(.6rem,1.8vw,.8rem)';
+        if (isActive) {
+            btn.textContent = 'ACTIVE';
+            btn.disabled = true;
+            btn.style.borderColor = '#ffcc00';
+            btn.style.color = '#ffcc00';
+        } else if (isOwned) {
+            btn.textContent = 'EQUIP';
+            btn.onclick = () => { equipCosmetic(cosmeticTab, item.id); };
+        } else {
+            btn.textContent = '$' + (item.price / 100).toFixed(2);
+            btn.style.borderColor = '#ffcc00';
+            btn.style.color = '#ffcc00';
+            btn.onclick = () => { buyCosmetic(cosmeticTab, item.id, item.price); };
+        }
+        div.appendChild(btn);
+        list.appendChild(div);
+    }
+}
+function equipCosmetic(tab, id) {
+    if (tab === 'skins') shopData.activeSkin = id;
+    else shopData.activeTrail = id;
+    saveShop();
+    renderCosmeticShop();
+}
+function buyCosmetic(tab, id, price) {
+    // Mock purchase — in production this would go through Play Store / Stripe
+    // For now, just unlock it for free with a confirmation
+    const item = (tab === 'skins' ? SHIP_SKINS : TRAIL_EFFECTS).find(i => i.id === id);
+    if (!item) return;
+    // Mock: auto-grant for testing
+    if (tab === 'skins') { if (!shopData.ownedSkins.includes(id)) shopData.ownedSkins.push(id); }
+    else { if (!shopData.ownedTrails.includes(id)) shopData.ownedTrails.push(id); }
+    saveShop();
+    renderCosmeticShop();
 }
 
 // Apply saved name to name inputs

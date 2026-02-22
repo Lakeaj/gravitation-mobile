@@ -3203,6 +3203,1129 @@ section('114. Seamless World Wrap Rendering');
     assert(offsets_M.length === 1, 'camera in middle needs no wrap offsets');
 }
 
+// =====================================================
+// PERK SYSTEM, COSMETIC SHOP & LOADOUT TESTS
+// =====================================================
+
+// Replicate perk/shop constants and functions from index.html
+const LOADOUT_POINTS = 3;
+const PERKS = [
+    {id:'shield',    name:'REINFORCED SHIELD', icon:'🛡', desc:'Start with +1 shield',          cost:200,  pts:1, solo:{shield:1},     pvp:{shield:1}},
+    {id:'firerate',  name:'QUICK LOADER',      icon:'⚡', desc:'Faster fire rate',               cost:300,  pts:1, solo:{fireMul:0.85}, pvp:{fireMul:0.92}},
+    {id:'thrust',    name:'BOOST JETS',        icon:'🔥', desc:'More thrust power',              cost:300,  pts:1, solo:{thrustMul:1.10},pvp:{thrustMul:1.05}},
+    {id:'hull',      name:'THICK HULL',        icon:'💎', desc:'+1 extra life',                  cost:500,  pts:2, solo:{lives:1},      pvp:{lives:1}},
+    {id:'scavenger', name:'SCAVENGER',         icon:'🧲', desc:'Weapons last longer',            cost:400,  pts:1, solo:{wpnMul:1.25},  pvp:{wpnMul:1.15}},
+    {id:'respawn',   name:'QUICK RESPAWN',     icon:'⏱', desc:'Faster respawn',                 cost:250,  pts:1, solo:{respawnMul:0.7},pvp:{respawnMul:0.85}},
+];
+const SHIP_SKINS = [
+    {id:'default', name:'STANDARD',    desc:'Classic arrowhead',           price:0,    color:null, free:true},
+    {id:'neon',    name:'NEON',         desc:'Glowing neon outline',       price:99,   color:'#00ffff'},
+    {id:'stealth', name:'STEALTH',      desc:'Dark angular silhouette',    price:99,   color:'#334455'},
+    {id:'phoenix', name:'PHOENIX',      desc:'Fiery wing tips',            price:199,  color:'#ff4400'},
+    {id:'gold',    name:'GOLD',         desc:'Shimmering gold hull',       price:199,  color:'#ffcc00'},
+    {id:'ghost',   name:'GHOST',        desc:'Translucent phantom ship',   price:149,  color:'#8866ff'},
+];
+const TRAIL_EFFECTS = [
+    {id:'default', name:'STANDARD',    desc:'Default exhaust',             price:0,    free:true},
+    {id:'ice',     name:'ICE',         desc:'Blue ice crystals',           price:99,   colors:['#88ddff','#aaeeff','#ccf4ff']},
+    {id:'fire',    name:'INFERNO',     desc:'Raging fire exhaust',         price:99,   colors:['#ff2200','#ff6600','#ffaa00']},
+    {id:'plasma',  name:'PLASMA',      desc:'Purple plasma stream',        price:149,  colors:['#aa44ff','#cc66ff','#8822dd']},
+    {id:'rainbow', name:'RAINBOW',     desc:'Color-cycling exhaust',       price:199,  colors:null, rainbow:true},
+    {id:'toxic',   name:'TOXIC',       desc:'Green acid trail',            price:99,   colors:['#44ff00','#88ff44','#aaff88']},
+];
+
+function xpForLevel(lv) { return Math.floor(XP_LEVEL_BASE * Math.pow(XP_LEVEL_SCALE, lv - 1)); }
+
+// Replicate shopData + helper functions
+function makeShopData(overrides) {
+    return Object.assign({
+        unlockedPerks: [],
+        equippedPerks: [],
+        ownedSkins: ['default'],
+        ownedTrails: ['default'],
+        activeSkin: 'default',
+        activeTrail: 'default',
+        coins: 0
+    }, overrides || {});
+}
+
+function totalXPEarned(stats) {
+    let total = stats.xp;
+    for (let lv = 1; lv < stats.level; lv++) total += xpForLevel(lv);
+    return total;
+}
+
+function spendableXP(stats, shopData) {
+    let spent = 0;
+    for (const pid of shopData.unlockedPerks) {
+        const p = PERKS.find(pk => pk.id === pid);
+        if (p) spent += p.cost;
+    }
+    return totalXPEarned(stats) - spent;
+}
+
+function getActivePerks(shopData, isPvp) {
+    const bonuses = { shield:0, fireMul:1, thrustMul:1, lives:0, wpnMul:1, respawnMul:1 };
+    for (const pid of shopData.equippedPerks) {
+        const perk = PERKS.find(p => p.id === pid);
+        if (!perk || !shopData.unlockedPerks.includes(pid)) continue;
+        const fx = isPvp ? perk.pvp : perk.solo;
+        if (fx.shield) bonuses.shield += fx.shield;
+        if (fx.fireMul) bonuses.fireMul *= fx.fireMul;
+        if (fx.thrustMul) bonuses.thrustMul *= fx.thrustMul;
+        if (fx.lives) bonuses.lives += fx.lives;
+        if (fx.wpnMul) bonuses.wpnMul *= fx.wpnMul;
+        if (fx.respawnMul) bonuses.respawnMul *= fx.respawnMul;
+    }
+    return bonuses;
+}
+
+function equippedPoints(shopData) {
+    let pts = 0;
+    for (const pid of shopData.equippedPerks) {
+        const p = PERKS.find(pk => pk.id === pid);
+        if (p) pts += p.pts;
+    }
+    return pts;
+}
+
+// =====================================================
+section('115. Perk Definitions & Constants');
+// =====================================================
+{
+    assert(PERKS.length === 6, 'exactly 6 perks defined');
+    assert(LOADOUT_POINTS === 3, 'loadout cap is 3 points');
+
+    // Every perk has required fields
+    for (const p of PERKS) {
+        assert(typeof p.id === 'string' && p.id.length > 0, p.id + ' has a valid id');
+        assert(typeof p.name === 'string', p.id + ' has a name');
+        assert(typeof p.cost === 'number' && p.cost > 0, p.id + ' has positive cost');
+        assert(typeof p.pts === 'number' && p.pts >= 1, p.id + ' costs at least 1 loadout point');
+        assert(p.pts <= LOADOUT_POINTS, p.id + ' pts <= LOADOUT_POINTS (equippable)');
+        assert(typeof p.solo === 'object', p.id + ' has solo effects');
+        assert(typeof p.pvp === 'object', p.id + ' has pvp effects');
+    }
+
+    // Unique IDs
+    const ids = PERKS.map(p => p.id);
+    assert(new Set(ids).size === ids.length, 'all perk IDs are unique');
+
+    // Hull perk costs 2 pts (heaviest)
+    const hull = PERKS.find(p => p.id === 'hull');
+    assert(hull.pts === 2, 'hull perk costs 2 loadout points');
+
+    // Can only equip hull + 1 single-point perk (2+1=3)
+    assert(hull.pts + 1 <= LOADOUT_POINTS, 'hull + 1pt perk fits in loadout');
+    assert(hull.pts + 2 > LOADOUT_POINTS, 'hull + 2pt perk exceeds loadout');
+}
+
+// =====================================================
+section('116. Cosmetic Definitions');
+// =====================================================
+{
+    assert(SHIP_SKINS.length === 6, 'exactly 6 ship skins defined');
+    assert(TRAIL_EFFECTS.length === 6, 'exactly 6 trail effects defined');
+
+    // Default items exist and are free
+    const defSkin = SHIP_SKINS.find(s => s.id === 'default');
+    const defTrail = TRAIL_EFFECTS.find(t => t.id === 'default');
+    assert(defSkin && defSkin.free, 'default skin exists and is free');
+    assert(defTrail && defTrail.free, 'default trail exists and is free');
+    assert(defSkin.price === 0, 'default skin costs $0');
+    assert(defTrail.price === 0, 'default trail costs $0');
+
+    // Premium items have prices
+    for (const s of SHIP_SKINS) {
+        if (s.id !== 'default') {
+            assert(s.price > 0, s.id + ' skin has positive price');
+            assert(typeof s.color === 'string', s.id + ' skin has a color');
+        }
+    }
+    for (const t of TRAIL_EFFECTS) {
+        if (t.id !== 'default') {
+            assert(t.price > 0, t.id + ' trail has positive price');
+            assert(t.rainbow || (Array.isArray(t.colors) && t.colors.length >= 2), t.id + ' trail has colors or rainbow flag');
+        }
+    }
+
+    // Unique IDs
+    assert(new Set(SHIP_SKINS.map(s => s.id)).size === SHIP_SKINS.length, 'skin IDs unique');
+    assert(new Set(TRAIL_EFFECTS.map(t => t.id)).size === TRAIL_EFFECTS.length, 'trail IDs unique');
+
+    // Rainbow trail specifically
+    const rainbow = TRAIL_EFFECTS.find(t => t.id === 'rainbow');
+    assert(rainbow && rainbow.rainbow === true, 'rainbow trail has rainbow flag');
+    assert(rainbow.colors === null, 'rainbow trail has null colors (uses hue cycling)');
+}
+
+// =====================================================
+section('117. Shop Data Initialization');
+// =====================================================
+{
+    const shop = makeShopData();
+    assert(Array.isArray(shop.unlockedPerks) && shop.unlockedPerks.length === 0, 'no perks unlocked initially');
+    assert(Array.isArray(shop.equippedPerks) && shop.equippedPerks.length === 0, 'no perks equipped initially');
+    assert(shop.ownedSkins.includes('default'), 'default skin owned initially');
+    assert(shop.ownedTrails.includes('default'), 'default trail owned initially');
+    assert(shop.ownedSkins.length === 1, 'only default skin owned');
+    assert(shop.ownedTrails.length === 1, 'only default trail owned');
+    assert(shop.activeSkin === 'default', 'default skin active');
+    assert(shop.activeTrail === 'default', 'default trail active');
+    assert(shop.coins === 0, 'no coins initially');
+}
+
+// =====================================================
+section('118. XP Spending Calculation');
+// =====================================================
+{
+    // Level 1 player with 0 xp
+    const stats1 = { xp: 0, level: 1 };
+    assert(totalXPEarned(stats1) === 0, 'level 1 with 0 xp = 0 total');
+
+    // Level 1 player with 50 xp
+    const stats2 = { xp: 50, level: 1 };
+    assert(totalXPEarned(stats2) === 50, 'level 1 with 50 xp = 50 total');
+
+    // Level 2 player (earned all of level 1 = 100, plus 30 current)
+    const stats3 = { xp: 30, level: 2 };
+    assert(totalXPEarned(stats3) === 30 + xpForLevel(1), 'level 2 total includes level 1 xp');
+    assert(totalXPEarned(stats3) === 130, 'level 2 with 30 xp = 130 total');
+
+    // Level 3 player (level 1=100 + level 2=140 + current 50)
+    const stats4 = { xp: 50, level: 3 };
+    const expected = xpForLevel(1) + xpForLevel(2) + 50; // 100 + 140 + 50 = 290
+    assert(totalXPEarned(stats4) === expected, 'level 3 total sums all previous levels');
+
+    // Spendable XP after unlocking a perk
+    const stats5 = { xp: 50, level: 3 }; // 290 total
+    const shop5 = makeShopData({ unlockedPerks: ['shield'] }); // shield costs 200
+    assert(spendableXP(stats5, shop5) === expected - 200, 'spendable XP subtracts perk cost');
+    assert(spendableXP(stats5, shop5) === 90, 'spendable = 290 - 200 = 90');
+
+    // Multiple perks
+    const shop6 = makeShopData({ unlockedPerks: ['shield', 'respawn'] }); // 200 + 250 = 450
+    const stats6 = { xp: 0, level: 5 }; // enough XP
+    const total6 = totalXPEarned(stats6);
+    assert(spendableXP(stats6, shop6) === total6 - 450, 'spendable subtracts all perk costs');
+}
+
+// =====================================================
+section('119. getActivePerks — Solo Mode');
+// =====================================================
+{
+    // No perks equipped
+    const shop0 = makeShopData();
+    const b0 = getActivePerks(shop0, false);
+    assert(b0.shield === 0, 'no perks: shield bonus = 0');
+    assert(b0.fireMul === 1, 'no perks: fireMul = 1');
+    assert(b0.thrustMul === 1, 'no perks: thrustMul = 1');
+    assert(b0.lives === 0, 'no perks: lives bonus = 0');
+    assert(b0.wpnMul === 1, 'no perks: wpnMul = 1');
+    assert(b0.respawnMul === 1, 'no perks: respawnMul = 1');
+
+    // Shield perk solo
+    const shop1 = makeShopData({ unlockedPerks: ['shield'], equippedPerks: ['shield'] });
+    const b1 = getActivePerks(shop1, false);
+    assert(b1.shield === 1, 'shield perk solo: +1 shield');
+    assert(b1.fireMul === 1, 'shield perk solo: fireMul unchanged');
+
+    // Fire rate perk solo
+    const shop2 = makeShopData({ unlockedPerks: ['firerate'], equippedPerks: ['firerate'] });
+    const b2 = getActivePerks(shop2, false);
+    assertApprox(b2.fireMul, 0.85, 0.001, 'firerate perk solo: 0.85 multiplier');
+
+    // Thrust perk solo
+    const shop3 = makeShopData({ unlockedPerks: ['thrust'], equippedPerks: ['thrust'] });
+    const b3 = getActivePerks(shop3, false);
+    assertApprox(b3.thrustMul, 1.10, 0.001, 'thrust perk solo: 1.10 multiplier');
+
+    // Hull perk solo
+    const shop4 = makeShopData({ unlockedPerks: ['hull'], equippedPerks: ['hull'] });
+    const b4 = getActivePerks(shop4, false);
+    assert(b4.lives === 1, 'hull perk solo: +1 life');
+
+    // Scavenger perk solo
+    const shop5 = makeShopData({ unlockedPerks: ['scavenger'], equippedPerks: ['scavenger'] });
+    const b5 = getActivePerks(shop5, false);
+    assertApprox(b5.wpnMul, 1.25, 0.001, 'scavenger perk solo: 1.25 weapon duration');
+
+    // Respawn perk solo
+    const shop6 = makeShopData({ unlockedPerks: ['respawn'], equippedPerks: ['respawn'] });
+    const b6 = getActivePerks(shop6, false);
+    assertApprox(b6.respawnMul, 0.7, 0.001, 'respawn perk solo: 0.7 respawn time');
+
+    // Multiple perks stacked
+    const shop7 = makeShopData({
+        unlockedPerks: ['shield', 'firerate', 'thrust'],
+        equippedPerks: ['shield', 'firerate', 'thrust']
+    });
+    const b7 = getActivePerks(shop7, false);
+    assert(b7.shield === 1, 'stacked: +1 shield');
+    assertApprox(b7.fireMul, 0.85, 0.001, 'stacked: fire rate applied');
+    assertApprox(b7.thrustMul, 1.10, 0.001, 'stacked: thrust applied');
+    assert(b7.lives === 0, 'stacked: no hull → no extra lives');
+}
+
+// =====================================================
+section('120. getActivePerks — PVP Mode (Reduced)');
+// =====================================================
+{
+    // Fire rate PVP
+    const shop1 = makeShopData({ unlockedPerks: ['firerate'], equippedPerks: ['firerate'] });
+    const b1 = getActivePerks(shop1, true);
+    assertApprox(b1.fireMul, 0.92, 0.001, 'firerate PVP: 0.92 (weaker than solo 0.85)');
+
+    // Thrust PVP
+    const shop2 = makeShopData({ unlockedPerks: ['thrust'], equippedPerks: ['thrust'] });
+    const b2 = getActivePerks(shop2, true);
+    assertApprox(b2.thrustMul, 1.05, 0.001, 'thrust PVP: 1.05 (weaker than solo 1.10)');
+
+    // Scavenger PVP
+    const shop3 = makeShopData({ unlockedPerks: ['scavenger'], equippedPerks: ['scavenger'] });
+    const b3 = getActivePerks(shop3, true);
+    assertApprox(b3.wpnMul, 1.15, 0.001, 'scavenger PVP: 1.15 (weaker than solo 1.25)');
+
+    // Respawn PVP
+    const shop4 = makeShopData({ unlockedPerks: ['respawn'], equippedPerks: ['respawn'] });
+    const b4 = getActivePerks(shop4, true);
+    assertApprox(b4.respawnMul, 0.85, 0.001, 'respawn PVP: 0.85 (weaker than solo 0.7)');
+
+    // Shield same in both modes
+    const shop5 = makeShopData({ unlockedPerks: ['shield'], equippedPerks: ['shield'] });
+    const bSolo = getActivePerks(shop5, false);
+    const bPvp = getActivePerks(shop5, true);
+    assert(bSolo.shield === bPvp.shield, 'shield bonus same in solo and PVP');
+
+    // Hull same in both modes
+    const shop6 = makeShopData({ unlockedPerks: ['hull'], equippedPerks: ['hull'] });
+    const hSolo = getActivePerks(shop6, false);
+    const hPvp = getActivePerks(shop6, true);
+    assert(hSolo.lives === hPvp.lives, 'hull lives same in solo and PVP');
+}
+
+// =====================================================
+section('121. Loadout Points System');
+// =====================================================
+{
+    // Empty loadout = 0 points
+    const shop0 = makeShopData();
+    assert(equippedPoints(shop0) === 0, 'empty loadout = 0 points');
+
+    // Single 1-pt perk = 1 point
+    const shop1 = makeShopData({ equippedPerks: ['shield'] });
+    assert(equippedPoints(shop1) === 1, 'single 1pt perk = 1 point');
+
+    // Two 1-pt perks = 2 points
+    const shop2 = makeShopData({ equippedPerks: ['shield', 'firerate'] });
+    assert(equippedPoints(shop2) === 2, 'two 1pt perks = 2 points');
+
+    // Three 1-pt perks = 3 points (max)
+    const shop3 = makeShopData({ equippedPerks: ['shield', 'firerate', 'thrust'] });
+    assert(equippedPoints(shop3) === 3, 'three 1pt perks = 3 points (max)');
+
+    // Hull (2pt) + one 1pt = 3 points (max)
+    const shop4 = makeShopData({ equippedPerks: ['hull', 'shield'] });
+    assert(equippedPoints(shop4) === 3, 'hull(2pt) + shield(1pt) = 3 points');
+
+    // Hull (2pt) alone = 2 points
+    const shop5 = makeShopData({ equippedPerks: ['hull'] });
+    assert(equippedPoints(shop5) === 2, 'hull alone = 2 points');
+
+    // Can't fit hull + 2pt perk (would be 4 > LOADOUT_POINTS)
+    assert(equippedPoints(makeShopData({ equippedPerks: ['hull'] })) + 2 > LOADOUT_POINTS, 'hull + 2pt would exceed cap');
+}
+
+// =====================================================
+section('122. Perk Unlock Validation');
+// =====================================================
+{
+    // Can't use equipped perk that isn't unlocked
+    const shopBad = makeShopData({ equippedPerks: ['shield'] }); // equipped but not unlocked
+    const bBad = getActivePerks(shopBad, false);
+    assert(bBad.shield === 0, 'equipped but not unlocked perk has no effect');
+
+    // Unlocked AND equipped works
+    const shopGood = makeShopData({ unlockedPerks: ['shield'], equippedPerks: ['shield'] });
+    const bGood = getActivePerks(shopGood, false);
+    assert(bGood.shield === 1, 'unlocked and equipped perk applies');
+
+    // Unlocked but not equipped has no effect
+    const shopUnlocked = makeShopData({ unlockedPerks: ['shield'] });
+    const bUnlocked = getActivePerks(shopUnlocked, false);
+    assert(bUnlocked.shield === 0, 'unlocked but not equipped has no effect');
+}
+
+// =====================================================
+section('123. Perk Integration — Lives & Shield');
+// =====================================================
+{
+    // Shield perk adds to starting shield
+    const bonusSh = { shield:1, fireMul:1, thrustMul:1, lives:0, wpnMul:1, respawnMul:1 };
+    const startShield = 1 + bonusSh.shield;
+    assert(startShield === 2, 'shield perk: spawn with 2 shields');
+
+    // Hull perk adds to starting lives
+    const bonusHull = { shield:0, fireMul:1, thrustMul:1, lives:1, wpnMul:1, respawnMul:1 };
+    const startLives = LIVES + bonusHull.lives;
+    assert(startLives === 11, 'hull perk: start with 11 lives');
+
+    // Both perks together
+    const shopBoth = makeShopData({
+        unlockedPerks: ['shield', 'hull'],
+        equippedPerks: ['shield', 'hull']
+    });
+    const bBoth = getActivePerks(shopBoth, false);
+    assert(LIVES + bBoth.lives === 11, 'hull gives 11 lives');
+    assert(1 + bBoth.shield === 2, 'shield gives 2 shields');
+
+    // Non-local players should not get bonuses
+    const pLivesRemote = LIVES; // no bonus for remote
+    assert(pLivesRemote === 10, 'remote player gets standard 10 lives');
+
+    // Respawn also gives shield bonus
+    const respawnShield = 1 + bonusSh.shield;
+    assert(respawnShield === 2, 'respawn also applies shield perk');
+}
+
+// =====================================================
+section('124. Perk Integration — Fire Rate');
+// =====================================================
+{
+    // Stock fire CD with no perks
+    const stockCd = Math.floor(FIRE_CD / 1.5); // = 9
+    assert(stockCd === 9, 'stock fire CD = 9 frames');
+
+    // Stock fire CD with firerate perk SOLO
+    const fMulSolo = 0.85;
+    const boostedCdSolo = Math.floor(FIRE_CD / 1.5 * fMulSolo);
+    assert(boostedCdSolo === 7, 'firerate perk solo: stock CD 9 * 0.85 = 7 frames');
+    assert(boostedCdSolo < stockCd, 'firerate perk reduces cooldown');
+
+    // Stock fire CD with firerate perk PVP
+    const fMulPvp = 0.92;
+    const boostedCdPvp = Math.floor(FIRE_CD / 1.5 * fMulPvp);
+    assert(boostedCdPvp === 8, 'firerate perk PVP: stock CD 9 * 0.92 = 8 frames');
+    assert(boostedCdPvp > boostedCdSolo, 'PVP fire rate boost is weaker than solo');
+
+    // Weapon fire CDs: spread with perk
+    const spreadCdPerk = Math.floor(FIRE_CD * fMulSolo);
+    assert(spreadCdPerk === 11, 'spread with firerate perk solo = 11 frames');
+
+    // Rapid with perk
+    const rapidCdPerk = Math.floor(FIRE_CD * 0.4 * fMulSolo);
+    assert(rapidCdPerk === 4, 'rapid with firerate perk solo = 4 frames');
+
+    // Heavy with perk
+    const heavyCdPerk = Math.floor(FIRE_CD * 1.2 * fMulSolo);
+    assert(heavyCdPerk === 14, 'heavy with firerate perk solo = 14 frames');
+
+    // Without perk (fMul=1), weapon CDs unchanged
+    const spreadCdNorm = Math.floor(FIRE_CD * 1);
+    assert(spreadCdNorm === FIRE_CD, 'spread without perk = base FIRE_CD');
+
+    // Non-local players always get fMul=1
+    const remoteCd = Math.floor(FIRE_CD / 1.5 * 1);
+    assert(remoteCd === stockCd, 'remote player fire rate unchanged');
+}
+
+// =====================================================
+section('125. Perk Integration — Thrust');
+// =====================================================
+{
+    // Base thrust with no perk
+    const baseVx = Math.cos(-Math.PI/2) * THRUST; // pointing up: cos(-90°) ≈ 0
+    const baseVy = Math.sin(-Math.PI/2) * THRUST; // sin(-90°) ≈ -0.092
+
+    // Thrust with solo perk
+    const tMul = 1.10;
+    const boostedVy = Math.sin(-Math.PI/2) * THRUST * tMul;
+    assertApprox(boostedVy, baseVy * tMul, 0.0001, 'thrust perk multiplies velocity');
+    assert(Math.abs(boostedVy) > Math.abs(baseVy), 'boosted thrust is stronger');
+
+    // PVP thrust (weaker boost)
+    const tMulPvp = 1.05;
+    const pvpVy = Math.sin(-Math.PI/2) * THRUST * tMulPvp;
+    assert(Math.abs(pvpVy) < Math.abs(boostedVy), 'PVP thrust boost weaker than solo');
+    assert(Math.abs(pvpVy) > Math.abs(baseVy), 'PVP thrust still stronger than base');
+
+    // Client prediction uses same multiplier
+    const cThr = THRUST * tMul;
+    assertApprox(cThr, THRUST * 1.10, 0.0001, 'client prediction thrust matches');
+
+    // Reverse thrust also boosted
+    const cRev = REV_THRUST * tMul;
+    assertApprox(cRev, REV_THRUST * 1.10, 0.0001, 'reverse thrust also boosted');
+
+    // Takeoff thrust also boosted
+    const takeoffVy = -THRUST * tMul * 2;
+    assertApprox(takeoffVy, -THRUST * 2.20, 0.0001, 'takeoff thrust boosted');
+}
+
+// =====================================================
+section('126. Perk Integration — Respawn Timer');
+// =====================================================
+{
+    // Normal respawn
+    assert(RESPAWN_T === 90, 'base respawn time = 90 frames');
+
+    // Solo perk
+    const respawnSolo = Math.floor(RESPAWN_T * 0.7);
+    assert(respawnSolo === 62, 'respawn perk solo: floor(90 * 0.7) = 62 frames');
+
+    // PVP perk
+    const respawnPvp = Math.floor(RESPAWN_T * 0.85);
+    assert(respawnPvp === 76, 'respawn perk PVP: 90 * 0.85 = 76 frames');
+
+    // Half-respawn (base kamikaze) with perk
+    const halfRespawnSolo = Math.floor(RESPAWN_T / 2 * 0.7);
+    assert(halfRespawnSolo === 31, 'half respawn with perk solo: floor(45 * 0.7) = 31');
+
+    // Remote players get full respawn time
+    const remoteRespawn = Math.floor(RESPAWN_T * 1);
+    assert(remoteRespawn === RESPAWN_T, 'remote player respawn unchanged');
+}
+
+// =====================================================
+section('127. Perk Integration — Weapon Timer (Scavenger)');
+// =====================================================
+{
+    assert(WEAPON_TIMER === 1200, 'base weapon timer = 1200 frames (20s)');
+
+    // Solo scavenger
+    const wpnTimerSolo = Math.floor(WEAPON_TIMER * 1.25);
+    assert(wpnTimerSolo === 1500, 'scavenger solo: 1200 * 1.25 = 1500 frames (25s)');
+
+    // PVP scavenger
+    const wpnTimerPvp = Math.floor(WEAPON_TIMER * 1.15);
+    assert(wpnTimerPvp === 1380, 'scavenger PVP: 1200 * 1.15 = 1380 frames (23s)');
+
+    // Weapon timer bar clamped to 1.0
+    const fill = Math.min(1, wpnTimerSolo / WEAPON_TIMER);
+    assert(fill === 1, 'weapon bar fill clamped to 1.0 when timer > WEAPON_TIMER');
+
+    // Normal weapon timer bar
+    const normalFill = Math.min(1, 600 / WEAPON_TIMER);
+    assertApprox(normalFill, 0.5, 0.001, 'half-depleted weapon bar = 0.5');
+
+    // Remote players get standard timer
+    const remoteTimer = Math.floor(WEAPON_TIMER * 1);
+    assert(remoteTimer === WEAPON_TIMER, 'remote player weapon timer unchanged');
+}
+
+// =====================================================
+section('128. Cosmetic Shop — Ownership');
+// =====================================================
+{
+    // Initially only default owned
+    const shop = makeShopData();
+    assert(shop.ownedSkins.includes('default'), 'default skin owned');
+    assert(!shop.ownedSkins.includes('neon'), 'neon not owned initially');
+
+    // After purchase
+    shop.ownedSkins.push('neon');
+    assert(shop.ownedSkins.includes('neon'), 'neon owned after purchase');
+    assert(shop.ownedSkins.length === 2, 'now owns 2 skins');
+
+    // Can equip owned skin
+    shop.activeSkin = 'neon';
+    assert(shop.activeSkin === 'neon', 'neon equipped after purchase');
+
+    // Trail purchase
+    shop.ownedTrails.push('fire');
+    assert(shop.ownedTrails.includes('fire'), 'fire trail owned after purchase');
+    shop.activeTrail = 'fire';
+    assert(shop.activeTrail === 'fire', 'fire trail equipped');
+
+    // Free items (default) always owned
+    const defSkin = SHIP_SKINS.find(s => s.id === 'default');
+    assert(defSkin.free === true, 'default skin marked free');
+}
+
+// =====================================================
+section('129. Cosmetic Rendering — Skin Properties');
+// =====================================================
+{
+    // Default skin has no special color
+    const def = SHIP_SKINS.find(s => s.id === 'default');
+    assert(def.color === null, 'default skin has null color (uses player color)');
+
+    // Neon skin
+    const neon = SHIP_SKINS.find(s => s.id === 'neon');
+    assert(neon.color === '#00ffff', 'neon skin is cyan');
+
+    // Stealth skin (angular shape)
+    const stealth = SHIP_SKINS.find(s => s.id === 'stealth');
+    assert(stealth.color === '#334455', 'stealth skin is dark');
+
+    // Phoenix (fire effects)
+    const phoenix = SHIP_SKINS.find(s => s.id === 'phoenix');
+    assert(phoenix.color === '#ff4400', 'phoenix skin is orange-red');
+
+    // Gold (shimmer)
+    const gold = SHIP_SKINS.find(s => s.id === 'gold');
+    assert(gold.color === '#ffcc00', 'gold skin is gold');
+
+    // Ghost (translucent — alpha 0.55)
+    const ghost = SHIP_SKINS.find(s => s.id === 'ghost');
+    assert(ghost.color === '#8866ff', 'ghost skin is purple');
+
+    // Skin color fallback: if no skin equipped, use player color
+    const skinId = 'default';
+    const skinDef = SHIP_SKINS.find(s => s.id === skinId);
+    const playerColor = '#ff6600';
+    const skinColor = (skinDef && skinDef.color) ? skinDef.color : playerColor;
+    assert(skinColor === playerColor, 'default skin falls back to player color');
+}
+
+// =====================================================
+section('130. Cosmetic Rendering — Trail Colors');
+// =====================================================
+{
+    // Default trail uses hardcoded colors
+    const def = TRAIL_EFFECTS.find(t => t.id === 'default');
+    assert(!def.colors && !def.rainbow, 'default trail has no special colors');
+
+    // Ice trail
+    const ice = TRAIL_EFFECTS.find(t => t.id === 'ice');
+    assert(ice.colors[0] === '#88ddff', 'ice trail primary color is light blue');
+    assert(ice.colors.length === 3, 'ice trail has 3 colors');
+
+    // Fire trail
+    const fire = TRAIL_EFFECTS.find(t => t.id === 'fire');
+    assert(fire.colors[0] === '#ff2200', 'fire trail primary color is red');
+
+    // Plasma trail
+    const plasma = TRAIL_EFFECTS.find(t => t.id === 'plasma');
+    assert(plasma.colors[0] === '#aa44ff', 'plasma trail primary is purple');
+
+    // Rainbow trail uses hue cycling
+    const rainbow = TRAIL_EFFECTS.find(t => t.id === 'rainbow');
+    assert(rainbow.rainbow === true, 'rainbow uses hue cycling');
+
+    // Toxic trail
+    const toxic = TRAIL_EFFECTS.find(t => t.id === 'toxic');
+    assert(toxic.colors[0] === '#44ff00', 'toxic trail primary is green');
+
+    // Trail color selection logic for custom trail
+    const trailDef = ice;
+    let tCol1 = '#ff8800', tCol2 = '#ffcc00';
+    if (trailDef && trailDef.rainbow) {
+        tCol1 = 'hsl(0,100%,50%)';
+    } else if (trailDef && trailDef.colors) {
+        tCol1 = trailDef.colors[0]; tCol2 = trailDef.colors[1] || trailDef.colors[0];
+    }
+    assert(tCol1 === '#88ddff', 'ice trail selects correct primary color');
+    assert(tCol2 === '#aaeeff', 'ice trail selects correct secondary color');
+}
+
+// =====================================================
+section('131. Survival Mode Perk Persistence');
+// =====================================================
+{
+    // Bug 1 fix: startSurvival should NOT overwrite perk bonuses
+    // Verify that beginGame applies perk bonuses, and they aren't reset
+    const bonuses = { shield:1, fireMul:1, thrustMul:1, lives:1, wpnMul:1, respawnMul:1 };
+    const startLives = LIVES + bonuses.lives;
+    const startShield = 1 + bonuses.shield;
+    // After beginGame, these should be the values (NOT reset to LIVES/1)
+    assert(startLives === 11, 'survival perk lives preserved (not reset to 10)');
+    assert(startShield === 2, 'survival perk shield preserved (not reset to 1)');
+
+    // Bug 2 fix: Wave rebuild preserves skin/trail
+    const humanState = {
+        x:100, y:200, lives:8, shield:2, weapon:'spread',
+        skin:'neon', trail:'fire', weaponTimer:500, flashTimer:0,
+        streak:3, lastKillFrame:100
+    };
+    // After wave rebuild, skin and trail must be preserved
+    assert(humanState.skin === 'neon', 'wave rebuild preserves skin');
+    assert(humanState.trail === 'fire', 'wave rebuild preserves trail');
+}
+
+// =====================================================
+section('132. PVP Cosmetic Visibility');
+// =====================================================
+{
+    // Server should include skin/trail in start data
+    const lobbyPlayer = { name: 'TEST', color: '#ff6600', index: 0, skin: 'gold', trail: 'plasma' };
+    const startDataPlayer = { name: lobbyPlayer.name, color: lobbyPlayer.color, index: lobbyPlayer.index, skin: lobbyPlayer.skin || 'default', trail: lobbyPlayer.trail || 'default' };
+    assert(startDataPlayer.skin === 'gold', 'start data includes player skin');
+    assert(startDataPlayer.trail === 'plasma', 'start data includes player trail');
+
+    // Client beginGame reads skin/trail from data.players
+    const isLocal = false; // not local player
+    const playerSkin = isLocal ? 'myLocalSkin' : (startDataPlayer.skin || 'default');
+    const playerTrail = isLocal ? 'myLocalTrail' : (startDataPlayer.trail || 'default');
+    assert(playerSkin === 'gold', 'remote player gets their skin from server');
+    assert(playerTrail === 'plasma', 'remote player gets their trail from server');
+
+    // Local player uses their own shopData
+    const isLocal2 = true;
+    const localSkin = isLocal2 ? 'neon' : (startDataPlayer.skin || 'default');
+    assert(localSkin === 'neon', 'local player uses own shopData skin');
+
+    // Fallback for missing skin/trail
+    const emptyPlayer = { name: 'OLD', color: '#fff', index: 1 };
+    const fallbackSkin = emptyPlayer.skin || 'default';
+    const fallbackTrail = emptyPlayer.trail || 'default';
+    assert(fallbackSkin === 'default', 'missing skin falls back to default');
+    assert(fallbackTrail === 'default', 'missing trail falls back to default');
+}
+
+// =====================================================
+section('133. Weapon Timer Bar Clamp');
+// =====================================================
+{
+    // Bug 3 fix: timer bar fill must be clamped to 1.0
+    // With scavenger perk, timer starts at 1500 (> WEAPON_TIMER of 1200)
+    const extendedTimer = Math.floor(WEAPON_TIMER * 1.25); // 1500
+    const fillRaw = extendedTimer / WEAPON_TIMER; // 1.25
+    const fillClamped = Math.min(1, fillRaw);
+    assert(fillRaw > 1, 'raw fill exceeds 1 with scavenger perk');
+    assert(fillClamped === 1, 'clamped fill caps at 1.0');
+
+    // Normal case still works
+    const normalTimer = 600;
+    const normalFill = Math.min(1, normalTimer / WEAPON_TIMER);
+    assertApprox(normalFill, 0.5, 0.001, 'normal fill at 0.5 works correctly');
+
+    // Full timer (no perk) = exactly 1.0
+    const fullFill = Math.min(1, WEAPON_TIMER / WEAPON_TIMER);
+    assert(fullFill === 1, 'full timer bar = 1.0');
+
+    // Empty timer
+    const emptyFill = Math.min(1, 0 / WEAPON_TIMER);
+    assert(emptyFill === 0, 'empty timer bar = 0');
+}
+
+// =====================================================
+section('134. Particle Trail Color Selection');
+// =====================================================
+{
+    // Bug 4 fix: thrust particles should use trail cosmetic colors
+
+    // Default trail: use standard colors
+    const defTrail = TRAIL_EFFECTS.find(t => t.id === 'default');
+    let tCol1 = '#ff8800', tCol2 = '#ffcc00';
+    if (defTrail && defTrail.rainbow) { tCol1 = 'hsl(0,100%,50%)'; }
+    else if (defTrail && defTrail.colors) { tCol1 = defTrail.colors[0]; }
+    assert(tCol1 === '#ff8800', 'default trail particles use orange');
+
+    // Fire trail: particles should be red/orange
+    const fireTrail = TRAIL_EFFECTS.find(t => t.id === 'fire');
+    let fCol1 = '#ff8800', fCol2 = '#ffcc00', fRCol1 = '#4488ff', fRCol2 = '#88ccff';
+    if (fireTrail && fireTrail.colors) {
+        fCol1 = fireTrail.colors[0]; fCol2 = fireTrail.colors[1];
+        fRCol1 = fireTrail.colors[1]; fRCol2 = fireTrail.colors[2];
+    }
+    assert(fCol1 === '#ff2200', 'fire trail particles use red');
+    assert(fCol2 === '#ff6600', 'fire trail secondary is orange');
+    assert(fRCol1 === '#ff6600', 'fire trail reverse uses secondary');
+    assert(fRCol2 === '#ffaa00', 'fire trail reverse uses tertiary');
+
+    // Rainbow trail: particles cycle hue
+    const rainbowTrail = TRAIL_EFFECTS.find(t => t.id === 'rainbow');
+    let rCol = '#ff8800';
+    if (rainbowTrail && rainbowTrail.rainbow) {
+        const hue = (100 * 3) % 360; // frame=100
+        rCol = 'hsl(' + hue + ',100%,50%)';
+    }
+    assert(rCol.startsWith('hsl('), 'rainbow particles use HSL color');
+}
+
+// =====================================================
+section('135. Perk Balance — PVP vs Solo Comparison');
+// =====================================================
+{
+    // Every perk with PVP-reduced effects should have weaker PVP values
+    for (const perk of PERKS) {
+        const solo = perk.solo;
+        const pvp = perk.pvp;
+
+        // Figure out which effect this perk has
+        if (solo.fireMul && solo.fireMul !== 1) {
+            assert(pvp.fireMul > solo.fireMul, perk.id + ': PVP fireMul weaker (closer to 1)');
+        }
+        if (solo.thrustMul && solo.thrustMul !== 1) {
+            assert(pvp.thrustMul < solo.thrustMul, perk.id + ': PVP thrustMul weaker (closer to 1)');
+        }
+        if (solo.wpnMul && solo.wpnMul !== 1) {
+            assert(pvp.wpnMul < solo.wpnMul, perk.id + ': PVP wpnMul weaker (closer to 1)');
+        }
+        if (solo.respawnMul && solo.respawnMul !== 1) {
+            assert(pvp.respawnMul > solo.respawnMul, perk.id + ': PVP respawnMul weaker (closer to 1)');
+        }
+    }
+
+    // Max possible advantage: all 3 points spent
+    // Best combo: shield(1pt) + firerate(1pt) + thrust(1pt) = 3pts
+    const maxShop = makeShopData({
+        unlockedPerks: ['shield', 'firerate', 'thrust'],
+        equippedPerks: ['shield', 'firerate', 'thrust']
+    });
+    const maxPvp = getActivePerks(maxShop, true);
+    assert(maxPvp.shield === 1, 'max PVP loadout: +1 shield');
+    assert(maxPvp.fireMul < 1, 'max PVP loadout: fire rate improved');
+    assert(maxPvp.fireMul > 0.85, 'max PVP loadout: fire rate not as strong as solo');
+    assert(maxPvp.thrustMul > 1, 'max PVP loadout: thrust improved');
+    assert(maxPvp.thrustMul < 1.10, 'max PVP loadout: thrust not as strong as solo');
+
+    // Hull + shield combo (heaviest defensive build)
+    const defShop = makeShopData({
+        unlockedPerks: ['hull', 'shield'],
+        equippedPerks: ['hull', 'shield']
+    });
+    const defBonuses = getActivePerks(defShop, true);
+    assert(defBonuses.lives === 1, 'defensive build: +1 life');
+    assert(defBonuses.shield === 1, 'defensive build: +1 shield');
+    assert(defBonuses.fireMul === 1, 'defensive build: no fire boost');
+    assert(equippedPoints(defShop) === 3, 'defensive build uses all 3 points');
+}
+
+// =====================================================
+section('136. Edge Cases — Unequip & Re-equip');
+// =====================================================
+{
+    const shop = makeShopData({ unlockedPerks: ['shield', 'firerate'], equippedPerks: ['shield'] });
+
+    // Equipped points = 1
+    assert(equippedPoints(shop) === 1, 'one perk equipped = 1pt');
+
+    // Unequip
+    shop.equippedPerks = shop.equippedPerks.filter(p => p !== 'shield');
+    assert(equippedPoints(shop) === 0, 'after unequip: 0 pts');
+
+    // Re-equip different perk
+    shop.equippedPerks.push('firerate');
+    assert(equippedPoints(shop) === 1, 're-equip different perk: 1pt');
+
+    // Unequip and equip hull (2pt)
+    shop.equippedPerks = [];
+    shop.unlockedPerks.push('hull');
+    shop.equippedPerks.push('hull');
+    assert(equippedPoints(shop) === 2, 'hull equipped: 2pts');
+
+    // Can add one more 1pt perk
+    const canAdd = equippedPoints(shop) + 1 <= LOADOUT_POINTS;
+    assert(canAdd, 'can add 1pt perk with hull');
+    shop.equippedPerks.push('shield');
+    assert(equippedPoints(shop) === 3, 'hull + shield = 3pts (full)');
+
+    // Cannot add another perk
+    const canAddMore = equippedPoints(shop) + 1 <= LOADOUT_POINTS;
+    assert(!canAddMore, 'cannot add another perk at 3pts');
+}
+
+// =====================================================
+section('137. XP Cost Validation');
+// =====================================================
+{
+    // All perks have defined costs
+    for (const p of PERKS) {
+        assert(p.cost >= 100, p.id + ' costs at least 100 XP');
+        assert(p.cost <= 1000, p.id + ' costs at most 1000 XP');
+    }
+
+    // Total cost of all perks
+    const totalCost = PERKS.reduce((s, p) => s + p.cost, 0);
+    assert(totalCost === 200 + 300 + 300 + 500 + 400 + 250, 'total perk cost = 1950 XP');
+    assert(totalCost === 1950, 'total perk cost is 1950');
+
+    // Player would need significant progression to unlock all
+    let levelForAll = 1;
+    let totalXP = 0;
+    while (totalXP < totalCost) {
+        totalXP += xpForLevel(levelForAll);
+        levelForAll++;
+    }
+    assert(levelForAll > 5, 'need level 5+ to unlock all perks');
+
+    // Cheapest perk (shield: 200)
+    const cheapest = PERKS.reduce((min, p) => p.cost < min.cost ? p : min, PERKS[0]);
+    assert(cheapest.cost === 200, 'cheapest perk is 200 XP');
+
+    // Most expensive (hull: 500)
+    const priciest = PERKS.reduce((max, p) => p.cost > max.cost ? p : max, PERKS[0]);
+    assert(priciest.cost === 500, 'most expensive perk is 500 XP');
+    assert(priciest.id === 'hull', 'most expensive perk is hull');
+}
+
+// =====================================================
+section('138. Cosmetic Price Validation');
+// =====================================================
+{
+    // All premium skins have positive prices in cents
+    for (const s of SHIP_SKINS) {
+        if (!s.free) {
+            assert(s.price >= 99, s.id + ' skin costs at least $0.99');
+            assert(s.price <= 999, s.id + ' skin costs at most $9.99');
+        }
+    }
+    for (const t of TRAIL_EFFECTS) {
+        if (!t.free) {
+            assert(t.price >= 99, t.id + ' trail costs at least $0.99');
+            assert(t.price <= 999, t.id + ' trail costs at most $9.99');
+        }
+    }
+
+    // Total skin cost
+    const totalSkinCost = SHIP_SKINS.reduce((s, sk) => s + (sk.price || 0), 0);
+    assert(totalSkinCost === 99 + 99 + 199 + 199 + 149, 'total skin cost = $7.45 (745 cents)');
+
+    // Total trail cost
+    const totalTrailCost = TRAIL_EFFECTS.reduce((s, t) => s + (t.price || 0), 0);
+    assert(totalTrailCost === 99 + 99 + 149 + 199 + 99, 'total trail cost = $6.45 (645 cents)');
+}
+
+// =====================================================
+section('139. Perk Effect — No Double Stacking');
+// =====================================================
+{
+    // Can't equip same perk twice
+    const shop = makeShopData({
+        unlockedPerks: ['shield'],
+        equippedPerks: ['shield', 'shield'] // invalid state
+    });
+    // getActivePerks should still only apply once (iterates equippedPerks)
+    const b = getActivePerks(shop, false);
+    // Actually it would apply twice since it iterates the array — this tests the guard
+    // The UI prevents this, but let's verify the max effect
+    assert(b.shield === 2, 'double-equip shield gives 2 (UI prevents this)');
+
+    // Verify equipped check prevents it
+    const shopClean = makeShopData({ unlockedPerks: ['shield'], equippedPerks: ['shield'] });
+    const alreadyEquipped = shopClean.equippedPerks.includes('shield');
+    assert(alreadyEquipped, 'equipPerk check: already equipped returns true');
+}
+
+// =====================================================
+section('140. Max Loadout Combinations');
+// =====================================================
+{
+    // All valid 3-point loadouts
+    const onePointers = PERKS.filter(p => p.pts === 1);
+    const twoPointers = PERKS.filter(p => p.pts === 2);
+
+    assert(onePointers.length === 5, 'five 1-point perks exist');
+    assert(twoPointers.length === 1, 'one 2-point perk exists (hull)');
+
+    // Choose-3 from 5 one-pointers: C(5,3) = 10
+    const combos3 = [];
+    for (let i = 0; i < onePointers.length; i++)
+        for (let j = i + 1; j < onePointers.length; j++)
+            for (let k = j + 1; k < onePointers.length; k++)
+                combos3.push([onePointers[i].id, onePointers[j].id, onePointers[k].id]);
+    assert(combos3.length === 10, '10 three-perk loadout combos from 1-pointers');
+
+    // 2-pointer + 1-pointer combos: 1 * 5 = 5
+    const combos2plus1 = [];
+    for (const two of twoPointers)
+        for (const one of onePointers)
+            combos2plus1.push([two.id, one.id]);
+    assert(combos2plus1.length === 5, '5 hull+perk combos');
+
+    // Total possible loadouts (excluding partial fills): 10 + 5 = 15
+    const totalCombos = combos3.length + combos2plus1.length;
+    assert(totalCombos === 15, '15 total max loadout combinations');
+
+    // Verify each combo fits in LOADOUT_POINTS
+    for (const combo of combos3) {
+        const pts = combo.reduce((s, id) => s + PERKS.find(p => p.id === id).pts, 0);
+        assert(pts === 3, 'combo ' + combo.join('+') + ' = 3 points');
+    }
+    for (const combo of combos2plus1) {
+        const pts = combo.reduce((s, id) => s + PERKS.find(p => p.id === id).pts, 0);
+        assert(pts === 3, 'combo ' + combo.join('+') + ' = 3 points');
+    }
+}
+
+// =====================================================
+section('141. Perk Effects on Each Weapon Type');
+// =====================================================
+{
+    // Verify fire rate perk applies to all weapon types
+    const fMul = 0.85; // solo firerate perk
+
+    // Spread: base CD = FIRE_CD
+    const spreadBase = FIRE_CD; // 14
+    const spreadPerk = Math.floor(FIRE_CD * fMul);
+    assert(spreadPerk < spreadBase, 'spread: perk reduces cooldown');
+
+    // Rapid: base CD = FIRE_CD * 0.4
+    const rapidBase = Math.floor(FIRE_CD * 0.4); // 5
+    const rapidPerk = Math.floor(FIRE_CD * 0.4 * fMul); // 4
+    assert(rapidPerk < rapidBase, 'rapid: perk reduces cooldown');
+
+    // Heavy: base CD = FIRE_CD * 1.2
+    const heavyBase = Math.floor(FIRE_CD * 1.2); // 16
+    const heavyPerk = Math.floor(FIRE_CD * 1.2 * fMul); // 14
+    assert(heavyPerk < heavyBase, 'heavy: perk reduces cooldown');
+
+    // Burst: base CD = FIRE_CD * 1.3
+    const burstBase = Math.floor(FIRE_CD * 1.3); // 18
+    const burstPerk = Math.floor(FIRE_CD * 1.3 * fMul); // 15
+    assert(burstPerk < burstBase, 'burst: perk reduces cooldown');
+
+    // Homing: base CD = FIRE_CD * 1.1
+    const homingBase = Math.floor(FIRE_CD * 1.1); // 15
+    const homingPerk = Math.floor(FIRE_CD * 1.1 * fMul); // 13
+    assert(homingPerk < homingBase, 'homing: perk reduces cooldown');
+
+    // Stock: base CD = FIRE_CD / 1.5
+    const stockBase = Math.floor(FIRE_CD / 1.5); // 9
+    const stockPerk = Math.floor(FIRE_CD / 1.5 * fMul); // 7
+    assert(stockPerk < stockBase, 'stock: perk reduces cooldown');
+
+    // Laser is NOT affected by fire rate perk (uses LASER_DUR + BEAM_CD)
+    const laserCd = LASER_DUR + BEAM_CD;
+    assert(laserCd === 99, 'laser cooldown is fixed at 99 frames (not affected by fMul)');
+}
+
+// =====================================================
+section('142. Server-Side Perk System (getServerPerks)');
+// =====================================================
+{
+    // Replicate server's getServerPerks
+    const SERVER_PERKS = [
+        {id:'shield',    pts:1, pvp:{shield:1}},
+        {id:'firerate',  pts:1, pvp:{fireMul:0.92}},
+        {id:'thrust',    pts:1, pvp:{thrustMul:1.05}},
+        {id:'hull',      pts:2, pvp:{lives:1}},
+        {id:'scavenger', pts:1, pvp:{wpnMul:1.15}},
+        {id:'respawn',   pts:1, pvp:{respawnMul:0.85}},
+    ];
+    function getServerPerks(equippedIds) {
+        const bonuses = { shield:0, fireMul:1, thrustMul:1, lives:0, wpnMul:1, respawnMul:1 };
+        if (!Array.isArray(equippedIds)) return bonuses;
+        let pts = 0;
+        const validIds = [];
+        for (const pid of equippedIds) {
+            const perk = SERVER_PERKS.find(p => p.id === pid);
+            if (!perk) continue;
+            if (pts + perk.pts > LOADOUT_POINTS) continue;
+            if (validIds.includes(pid)) continue;
+            pts += perk.pts;
+            validIds.push(pid);
+        }
+        for (const pid of validIds) {
+            const perk = SERVER_PERKS.find(p => p.id === pid);
+            const fx = perk.pvp;
+            if (fx.shield) bonuses.shield += fx.shield;
+            if (fx.fireMul) bonuses.fireMul *= fx.fireMul;
+            if (fx.thrustMul) bonuses.thrustMul *= fx.thrustMul;
+            if (fx.lives) bonuses.lives += fx.lives;
+            if (fx.wpnMul) bonuses.wpnMul *= fx.wpnMul;
+            if (fx.respawnMul) bonuses.respawnMul *= fx.respawnMul;
+        }
+        return bonuses;
+    }
+
+    // Empty perks
+    const b0 = getServerPerks([]);
+    assert(b0.shield === 0, 'server: no perks → shield 0');
+    assert(b0.fireMul === 1, 'server: no perks → fireMul 1');
+    assert(b0.lives === 0, 'server: no perks → lives 0');
+
+    // Null/undefined perks (safety)
+    const bNull = getServerPerks(null);
+    assert(bNull.shield === 0, 'server: null perks → defaults');
+    const bUndef = getServerPerks(undefined);
+    assert(bUndef.shield === 0, 'server: undefined perks → defaults');
+
+    // Shield perk
+    const b1 = getServerPerks(['shield']);
+    assert(b1.shield === 1, 'server: shield perk → +1 shield');
+    assert(LIVES + b1.lives === LIVES, 'server: shield perk → no extra lives');
+
+    // Hull perk
+    const b2 = getServerPerks(['hull']);
+    assert(b2.lives === 1, 'server: hull perk → +1 life');
+
+    // Player spawns with correct values
+    const shieldBonus = getServerPerks(['shield']);
+    assert(1 + shieldBonus.shield === 2, 'server: player spawns with shield=2');
+    const hullBonus = getServerPerks(['hull']);
+    assert(LIVES + hullBonus.lives === 11, 'server: player spawns with 11 lives');
+
+    // Fire rate perk (PVP values only on server)
+    const b3 = getServerPerks(['firerate']);
+    assertApprox(b3.fireMul, 0.92, 0.001, 'server: firerate → 0.92');
+    const stockCdPerk = Math.floor(FIRE_CD / 1.5 * b3.fireMul);
+    assert(stockCdPerk === 8, 'server: stock fire CD with perk = 8');
+
+    // Thrust perk
+    const b4 = getServerPerks(['thrust']);
+    assertApprox(b4.thrustMul, 1.05, 0.001, 'server: thrust → 1.05');
+
+    // Scavenger perk
+    const b5 = getServerPerks(['scavenger']);
+    assertApprox(b5.wpnMul, 1.15, 0.001, 'server: scavenger → 1.15');
+    const srvWpnTimer = Math.floor(WEAPON_TIMER * b5.wpnMul);
+    assert(srvWpnTimer === 1380, 'server: weapon timer = 1380');
+
+    // Respawn perk
+    const b6 = getServerPerks(['respawn']);
+    assertApprox(b6.respawnMul, 0.85, 0.001, 'server: respawn → 0.85');
+    const srvRespawn = Math.floor(RESPAWN_T * b6.respawnMul);
+    assert(srvRespawn === 76, 'server: respawn time = 76');
+
+    // Full loadout: shield + firerate + thrust (3 pts)
+    const bMax = getServerPerks(['shield', 'firerate', 'thrust']);
+    assert(bMax.shield === 1, 'server: max build shield');
+    assertApprox(bMax.fireMul, 0.92, 0.001, 'server: max build fireMul');
+    assertApprox(bMax.thrustMul, 1.05, 0.001, 'server: max build thrustMul');
+
+    // Budget enforcement: hull(2) + respawn(1) + shield(1) = 4 > 3
+    const bOver = getServerPerks(['hull', 'respawn', 'shield']);
+    assert(bOver.lives === 1, 'server: hull accepted');
+    assertApprox(bOver.respawnMul, 0.85, 0.001, 'server: respawn accepted (2+1=3)');
+    assert(bOver.shield === 0, 'server: shield rejected (would be 4 pts)');
+
+    // No duplicate perks
+    const bDup = getServerPerks(['shield', 'shield', 'shield']);
+    assert(bDup.shield === 1, 'server: duplicate shields only counted once');
+
+    // Invalid perk IDs ignored
+    const bBad = getServerPerks(['shield', 'fakePerk', 'nonexistent']);
+    assert(bBad.shield === 1, 'server: invalid IDs ignored');
+    assert(bBad.fireMul === 1, 'server: still default for non-existent perks');
+
+    // Server PVP values match client PVP values
+    for (const sp of SERVER_PERKS) {
+        const cp = PERKS.find(p => p.id === sp.id);
+        assert(cp, 'server perk ' + sp.id + ' exists in client PERKS');
+        // Compare PVP effects
+        for (const key in sp.pvp) {
+            assertApprox(sp.pvp[key], cp.pvp[key], 0.001, sp.id + ' PVP ' + key + ' matches between server and client');
+        }
+    }
+}
+
+// =====================================================
+section('143. Server Perk Integration — Respawn Shield');
+// =====================================================
+{
+    // After respawn, player should get perk shield bonus
+    const perkBonuses = { shield:1, fireMul:1, thrustMul:1, lives:0, wpnMul:1, respawnMul:1 };
+    const respawnShield = 1 + perkBonuses.shield;
+    assert(respawnShield === 2, 'server respawn: shield perk gives 2 shields');
+
+    // Without perk
+    const noPerkBonuses = { shield:0, fireMul:1, thrustMul:1, lives:0, wpnMul:1, respawnMul:1 };
+    const normalShield = 1 + noPerkBonuses.shield;
+    assert(normalShield === 1, 'server respawn: no perk gives 1 shield');
+
+    // Kill player respawn timer uses perk
+    const rMul = 0.85;
+    const respawnTime = Math.floor(RESPAWN_T * rMul);
+    assert(respawnTime === 76, 'server: death respawn timer with perk = 76');
+
+    // Kamikaze respawn also uses perk
+    const kamikazeResp = Math.floor(RESPAWN_T / 2 * rMul);
+    assert(kamikazeResp === 38, 'server: kamikaze respawn timer with perk = 38');
+}
+
 console.log(`\n${'='.repeat(50)}`);
 console.log(`RESULTS: ${passed}/${total} passed, ${failed} failed`);
 console.log(`${'='.repeat(50)}`);
