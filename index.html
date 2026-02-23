@@ -375,12 +375,12 @@ const PERKS = [
 
 // ---------- COSMETIC SHOP ----------
 const SHIP_SKINS = [
-    {id:'default', name:'STANDARD',    desc:'Classic arrowhead',           price:0,    color:null, free:true},
-    {id:'neon',    name:'NEON',         desc:'Glowing neon outline',       price:99,   color:'#00ffff'},
-    {id:'stealth', name:'STEALTH',      desc:'Dark angular silhouette',    price:99,   color:'#334455'},
-    {id:'phoenix', name:'PHOENIX',      desc:'Fiery wing tips',            price:199,  color:'#ff4400'},
-    {id:'gold',    name:'GOLD',         desc:'Shimmering gold hull',       price:199,  color:'#ffcc00'},
-    {id:'ghost',   name:'GHOST',        desc:'Translucent phantom ship',   price:149,  color:'#8866ff'},
+    {id:'default', name:'STANDARD',    desc:'Classic arrowhead',           price:0,    color:null, free:true,  shape:'default'},
+    {id:'neon',    name:'NEON',         desc:'Sleek racer silhouette',     price:99,   color:'#00ffff',  shape:'neon'},
+    {id:'stealth', name:'STEALTH',      desc:'Dark angular silhouette',    price:99,   color:'#334455',  shape:'stealth'},
+    {id:'phoenix', name:'PHOENIX',      desc:'Spread-wing firebird',       price:199,  color:'#ff4400',  shape:'phoenix'},
+    {id:'gold',    name:'GOLD',         desc:'Ornate royal cruiser',       price:199,  color:'#ffcc00',  shape:'gold'},
+    {id:'ghost',   name:'GHOST',        desc:'Ethereal phantom vessel',    price:149,  color:'#8866ff',  shape:'ghost'},
 ];
 const TRAIL_EFFECTS = [
     {id:'default', name:'STANDARD',    desc:'Default exhaust',             price:0,    free:true},
@@ -451,6 +451,7 @@ let activeBonuses = { shield:0, fireMul:1, thrustMul:1, lives:0, wpnMul:1, respa
 let musicPlaying = false, musicNodes = [], musicInterval = null;
 let combatIntensity = 0; // 0 = calm, 1 = full combat
 let combatDecayTimer = 0;
+let nearbyPlayerCount = 0; // how many alive enemies are visible on screen
 const COMBAT_DECAY_RATE = 0.004; // ~4 sec from full to zero at 60fps
 const COMBAT_SHOOT_BUMP = 0.08;
 const COMBAT_KILL_BUMP = 0.35;
@@ -2339,6 +2340,87 @@ function updateCamera(p) {
 }
 
 // =====================================================
+// SHIP SHAPE DRAWING — shared by game renderer + shop preview
+// =====================================================
+function drawShipShape(c, skinId, sz) {
+    switch (skinId) {
+        case 'neon':
+            // Sleek racer — narrow, elongated, swept-back fins
+            c.moveTo(0, -sz * 1.15);
+            c.lineTo(-sz * 0.35, -sz * 0.2);
+            c.lineTo(-sz * 0.75, sz * 0.65);
+            c.lineTo(-sz * 0.2, sz * 0.35);
+            c.lineTo(0, sz * 0.5);
+            c.lineTo(sz * 0.2, sz * 0.35);
+            c.lineTo(sz * 0.75, sz * 0.65);
+            c.lineTo(sz * 0.35, -sz * 0.2);
+            c.closePath();
+            break;
+        case 'stealth':
+            // Angular stealth — flat, wide diamond, F-117 inspired
+            c.moveTo(0, -sz * 1.1);
+            c.lineTo(-sz * 0.9, sz * 0.5);
+            c.lineTo(-sz * 0.3, sz * 0.3);
+            c.lineTo(0, sz * 0.6);
+            c.lineTo(sz * 0.3, sz * 0.3);
+            c.lineTo(sz * 0.9, sz * 0.5);
+            c.closePath();
+            break;
+        case 'phoenix':
+            // Spread-wing bird — wide swept wings with curved tips
+            c.moveTo(0, -sz * 1.05);
+            c.lineTo(-sz * 0.3, -sz * 0.15);
+            c.lineTo(-sz * 0.95, sz * 0.1);
+            c.quadraticCurveTo(-sz * 1.0, sz * 0.5, -sz * 0.85, sz * 0.4);
+            c.lineTo(-sz * 0.25, sz * 0.15);
+            c.lineTo(0, sz * 0.55);
+            c.lineTo(sz * 0.25, sz * 0.15);
+            c.lineTo(sz * 0.85, sz * 0.4);
+            c.quadraticCurveTo(sz * 1.0, sz * 0.5, sz * 0.95, sz * 0.1);
+            c.lineTo(sz * 0.3, -sz * 0.15);
+            c.closePath();
+            break;
+        case 'gold':
+            // Ornate cruiser — wider body, pronged front, regal
+            c.moveTo(0, -sz * 1.1);
+            c.lineTo(-sz * 0.2, -sz * 0.6);
+            c.lineTo(-sz * 0.55, -sz * 0.3);
+            c.lineTo(-sz * 0.7, sz * 0.4);
+            c.lineTo(-sz * 0.45, sz * 0.7);
+            c.lineTo(-sz * 0.15, sz * 0.5);
+            c.lineTo(0, sz * 0.65);
+            c.lineTo(sz * 0.15, sz * 0.5);
+            c.lineTo(sz * 0.45, sz * 0.7);
+            c.lineTo(sz * 0.7, sz * 0.4);
+            c.lineTo(sz * 0.55, -sz * 0.3);
+            c.lineTo(sz * 0.2, -sz * 0.6);
+            c.closePath();
+            break;
+        case 'ghost':
+            // Ethereal phantom — wispy, tapering shape with segmented feel
+            c.moveTo(0, -sz * 1.0);
+            c.quadraticCurveTo(-sz * 0.5, -sz * 0.5, -sz * 0.6, sz * 0.0);
+            c.lineTo(-sz * 0.7, sz * 0.4);
+            c.quadraticCurveTo(-sz * 0.5, sz * 0.3, -sz * 0.35, sz * 0.6);
+            c.quadraticCurveTo(-sz * 0.15, sz * 0.4, 0, sz * 0.7);
+            c.quadraticCurveTo(sz * 0.15, sz * 0.4, sz * 0.35, sz * 0.6);
+            c.quadraticCurveTo(sz * 0.5, sz * 0.3, sz * 0.7, sz * 0.4);
+            c.lineTo(sz * 0.6, sz * 0.0);
+            c.quadraticCurveTo(sz * 0.5, -sz * 0.5, 0, -sz * 1.0);
+            c.closePath();
+            break;
+        default:
+            // Classic arrowhead
+            c.moveTo(0, -sz);
+            c.lineTo(-sz * 0.7, sz * 0.7);
+            c.lineTo(0, sz * 0.3);
+            c.lineTo(sz * 0.7, sz * 0.7);
+            c.closePath();
+            break;
+    }
+}
+
+// =====================================================
 // DRAWING
 // =====================================================
 function draw() {
@@ -2476,24 +2558,32 @@ function draw() {
         if (skinId==='neon' && !flashing) { ctx.shadowColor=skinDef.color; ctx.shadowBlur=18; }
         if (skinId==='ghost' && !flashing) { ctx.globalAlpha=Math.max(ctx.globalAlpha*0.55, 0.2); }
         ctx.fillStyle=skinColor;ctx.beginPath();
-        if (skinId==='stealth') {
-            // Angular stealth shape
-            ctx.moveTo(0,-SHIP_SZ*1.1);ctx.lineTo(-SHIP_SZ*.9,SHIP_SZ*.5);ctx.lineTo(-SHIP_SZ*.3,SHIP_SZ*.3);ctx.lineTo(0,SHIP_SZ*.6);ctx.lineTo(SHIP_SZ*.3,SHIP_SZ*.3);ctx.lineTo(SHIP_SZ*.9,SHIP_SZ*.5);ctx.closePath();
-        } else {
-            ctx.moveTo(0,-SHIP_SZ);ctx.lineTo(-SHIP_SZ*.7,SHIP_SZ*.7);ctx.lineTo(0,SHIP_SZ*.3);ctx.lineTo(SHIP_SZ*.7,SHIP_SZ*.7);ctx.closePath();
-        }
+        drawShipShape(ctx, skinId, SHIP_SZ);
         ctx.fill();
         ctx.strokeStyle=(skinId==='gold'&&!flashing)?'#ffee88':'#fff';ctx.lineWidth=1;ctx.stroke();
         // Phoenix wing-tip flames
         if (skinId==='phoenix' && !flashing) {
             ctx.fillStyle='#ff6600';ctx.globalAlpha=0.6+Math.sin(frame*0.15)*0.3;
-            ctx.beginPath();ctx.arc(-SHIP_SZ*.7,SHIP_SZ*.7,3,0,Math.PI*2);ctx.fill();
-            ctx.beginPath();ctx.arc(SHIP_SZ*.7,SHIP_SZ*.7,3,0,Math.PI*2);ctx.fill();
+            ctx.beginPath();ctx.arc(-SHIP_SZ*.85,SHIP_SZ*.4,3.5,0,Math.PI*2);ctx.fill();
+            ctx.beginPath();ctx.arc(SHIP_SZ*.85,SHIP_SZ*.4,3.5,0,Math.PI*2);ctx.fill();
+            ctx.fillStyle='#ffcc00';ctx.globalAlpha=0.4+Math.sin(frame*0.2)*0.2;
+            ctx.beginPath();ctx.arc(-SHIP_SZ*.85,SHIP_SZ*.4,2,0,Math.PI*2);ctx.fill();
+            ctx.beginPath();ctx.arc(SHIP_SZ*.85,SHIP_SZ*.4,2,0,Math.PI*2);ctx.fill();
             ctx.globalAlpha=1;
         }
         // Gold shimmer
         if (skinId==='gold' && !flashing) {
             ctx.fillStyle='rgba(255,238,136,'+(0.15+Math.sin(frame*0.1)*0.1)+')';ctx.fill();
+        }
+        // Neon inner glow lines
+        if (skinId==='neon' && !flashing) {
+            ctx.strokeStyle='rgba(0,255,255,0.4)';ctx.lineWidth=0.5;
+            ctx.beginPath();ctx.moveTo(0,-SHIP_SZ*0.5);ctx.lineTo(-SHIP_SZ*0.25,SHIP_SZ*0.3);ctx.moveTo(0,-SHIP_SZ*0.5);ctx.lineTo(SHIP_SZ*0.25,SHIP_SZ*0.3);ctx.stroke();
+        }
+        // Ghost flicker
+        if (skinId==='ghost' && !flashing) {
+            ctx.strokeStyle='rgba(136,102,255,'+(0.2+Math.sin(frame*0.12)*0.15)+')';ctx.lineWidth=1;
+            ctx.beginPath();drawShipShape(ctx, skinId, SHIP_SZ*1.08);ctx.stroke();
         }
         ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(0,-SHIP_SZ*.2,SHIP_SZ*.2,0,Math.PI*2);ctx.fill();
         // Color-blind shape indicator
@@ -3127,16 +3217,116 @@ function renderCosmeticShop() {
         const div = document.createElement('div');
         div.style.cssText = 'padding:.5em .7em;margin:.3em 0;border-radius:6px;border:1px solid '+(isActive?'#ffcc00':isOwned?'#444':'#333')+';background:'+(isActive?'rgba(255,204,0,0.08)':'rgba(255,255,255,0.03)')+';display:flex;align-items:center;gap:.5em';
 
-        // Preview swatch
-        const swatch = document.createElement('div');
+        // Preview — canvas ship rendering for skins, color swatch for trails
         if (cosmeticTab === 'skins') {
-            swatch.style.cssText = 'width:28px;height:28px;border-radius:50%;border:2px solid '+(item.color||'#00ccff')+';background:'+(item.color?'radial-gradient(circle,'+item.color+',#111)':'radial-gradient(circle,#00ccff,#111)');
+            const prevCanvas = document.createElement('canvas');
+            prevCanvas.width = 56; prevCanvas.height = 56;
+            prevCanvas.style.cssText = 'width:56px;height:56px;flex-shrink:0';
+            const pc = prevCanvas.getContext('2d');
+            // Background
+            pc.fillStyle = '#0a0012'; pc.fillRect(0, 0, 56, 56);
+            pc.save();
+            pc.translate(28, 30);
+            // Ship color
+            const sColor = item.color || '#00ccff';
+            if (item.id === 'neon') { pc.shadowColor = sColor; pc.shadowBlur = 12; }
+            if (item.id === 'ghost') { pc.globalAlpha = 0.55; }
+            pc.fillStyle = sColor;
+            pc.beginPath();
+            drawShipShape(pc, item.id, 16);
+            pc.fill();
+            pc.strokeStyle = item.id === 'gold' ? '#ffee88' : '#fff';
+            pc.lineWidth = 1;
+            pc.stroke();
+            // Cockpit
+            pc.fillStyle = '#fff'; pc.beginPath(); pc.arc(0, -16 * 0.2, 16 * 0.2, 0, Math.PI * 2); pc.fill();
+            // Neon inner lines
+            if (item.id === 'neon') {
+                pc.strokeStyle = 'rgba(0,255,255,0.5)'; pc.lineWidth = 0.5;
+                pc.beginPath(); pc.moveTo(0, -8); pc.lineTo(-4, 5); pc.moveTo(0, -8); pc.lineTo(4, 5); pc.stroke();
+            }
+            // Phoenix flames
+            if (item.id === 'phoenix') {
+                pc.fillStyle = '#ff6600'; pc.globalAlpha = 0.8;
+                pc.beginPath(); pc.arc(-16 * 0.85, 16 * 0.4, 3, 0, Math.PI * 2); pc.fill();
+                pc.beginPath(); pc.arc(16 * 0.85, 16 * 0.4, 3, 0, Math.PI * 2); pc.fill();
+                pc.globalAlpha = 1;
+            }
+            // Gold shimmer
+            if (item.id === 'gold') {
+                pc.fillStyle = 'rgba(255,238,136,0.15)';
+                pc.beginPath(); drawShipShape(pc, item.id, 16); pc.fill();
+            }
+            // Ghost outer glow
+            if (item.id === 'ghost') {
+                pc.globalAlpha = 0.3;
+                pc.strokeStyle = '#8866ff'; pc.lineWidth = 1;
+                pc.beginPath(); drawShipShape(pc, item.id, 17); pc.stroke();
+                pc.globalAlpha = 1;
+            }
+            pc.restore();
+            // Thrust flame preview
+            pc.save();
+            pc.translate(28, 30);
+            pc.fillStyle = '#ff8800'; pc.globalAlpha = 0.7;
+            pc.beginPath(); pc.moveTo(-4, 12); pc.lineTo(0, 22); pc.lineTo(4, 12); pc.closePath(); pc.fill();
+            pc.fillStyle = '#ffcc00'; pc.globalAlpha = 0.5;
+            pc.beginPath(); pc.moveTo(-2, 12); pc.lineTo(0, 18); pc.lineTo(2, 12); pc.closePath(); pc.fill();
+            pc.restore();
+            div.appendChild(prevCanvas);
         } else {
+            const swatch = document.createElement('div');
             const tc = item.rainbow ? '#ff0000' : (item.colors ? item.colors[0] : '#ff8800');
-            swatch.style.cssText = 'width:28px;height:28px;border-radius:4px;background:linear-gradient(180deg,'+tc+',#111)';
-            if (item.rainbow) swatch.style.background = 'linear-gradient(135deg,red,orange,yellow,green,blue,purple)';
+            swatch.style.cssText = 'width:56px;height:56px;border-radius:4px;flex-shrink:0;position:relative;overflow:hidden';
+            if (item.rainbow) {
+                swatch.style.background = 'linear-gradient(135deg,red,orange,yellow,green,blue,purple)';
+            } else {
+                swatch.style.background = '#0a0012';
+            }
+            // Draw trail preview with mini canvas
+            const tCanvas = document.createElement('canvas');
+            tCanvas.width = 56; tCanvas.height = 56;
+            tCanvas.style.cssText = 'width:100%;height:100%;position:absolute;top:0;left:0';
+            const tc2 = tCanvas.getContext('2d');
+            tc2.fillStyle = '#0a0012'; tc2.fillRect(0, 0, 56, 56);
+            // Draw a small ship with trail
+            tc2.save(); tc2.translate(28, 20);
+            tc2.fillStyle = '#00ccff';
+            tc2.beginPath(); drawShipShape(tc2, 'default', 10); tc2.fill();
+            tc2.strokeStyle = '#fff'; tc2.lineWidth = 0.8; tc2.stroke();
+            tc2.fillStyle = '#fff'; tc2.beginPath(); tc2.arc(0, -2, 2, 0, Math.PI * 2); tc2.fill();
+            tc2.restore();
+            // Trail particles
+            if (item.rainbow) {
+                for (let i = 0; i < 8; i++) {
+                    const hue = (i * 45) % 360;
+                    tc2.fillStyle = 'hsl(' + hue + ',100%,50%)';
+                    tc2.globalAlpha = 0.8 - i * 0.08;
+                    tc2.beginPath();
+                    tc2.arc(28 + (Math.random() - 0.5) * 6, 30 + i * 3, 2.5 - i * 0.2, 0, Math.PI * 2);
+                    tc2.fill();
+                }
+            } else if (item.colors) {
+                for (let i = 0; i < 8; i++) {
+                    tc2.fillStyle = item.colors[i % item.colors.length];
+                    tc2.globalAlpha = 0.8 - i * 0.08;
+                    tc2.beginPath();
+                    tc2.arc(28 + (Math.random() - 0.5) * 5, 30 + i * 3, 2.5 - i * 0.2, 0, Math.PI * 2);
+                    tc2.fill();
+                }
+            } else {
+                for (let i = 0; i < 6; i++) {
+                    tc2.fillStyle = i % 2 === 0 ? '#ff8800' : '#ffcc00';
+                    tc2.globalAlpha = 0.7 - i * 0.1;
+                    tc2.beginPath();
+                    tc2.arc(28 + (Math.random() - 0.5) * 4, 30 + i * 3, 2 - i * 0.2, 0, Math.PI * 2);
+                    tc2.fill();
+                }
+            }
+            tc2.globalAlpha = 1;
+            swatch.appendChild(tCanvas);
+            div.appendChild(swatch);
         }
-        div.appendChild(swatch);
 
         const info = document.createElement('div');
         info.style.cssText = 'flex:1';
@@ -3207,13 +3397,18 @@ function updateCombatIntensity() {
     // Proximity bump: nearby alive enemies raise tension
     const mi = myIndex >= 0 ? myIndex : 0;
     const me = players[mi];
+    let nearCount = 0;
     if (me && me.alive) {
         for (let i = 0; i < players.length; i++) {
             if (i === mi || !players[i] || !players[i].alive) continue;
             const d = dist(me.x, me.y, players[i].x, players[i].y);
-            if (d < 500) bumpCombat(COMBAT_PROXIMITY_BUMP * (1 - d / 500));
+            if (d < 500) {
+                bumpCombat(COMBAT_PROXIMITY_BUMP * (1 - d / 500));
+                nearCount++;
+            }
         }
     }
+    nearbyPlayerCount = nearCount;
     // Active bullets also raise a little tension
     if (bullets.length > 0) bumpCombat(Math.min(bullets.length * 0.001, 0.01));
 
@@ -3437,6 +3632,65 @@ function startMusic() {
             }
         }
 
+        // ═══════════════════════════════════════════════
+        // LAYER 4: WARZONE CHAOS (3+ enemies on screen)
+        // Overwhelming — dissonant swarm, sirens, 32nd-note kicks
+        // Triggers when nearbyPlayerCount >= 3 and intensity > 0.6
+        // ═══════════════════════════════════════════════
+        const warzoneActive = nearbyPlayerCount >= 3 && ci > 0.6;
+        if (warzoneActive) {
+            const wv = vol * Math.min(1, (ci - 0.5) / 0.4) * 0.85;
+
+            // ── WALL OF NOISE: triple-detuned saws for swarm feeling ──
+            const wRoot = M_COMBAT_ROOT[bi % M_COMBAT_ROOT.length];
+            mOsc('sawtooth', wRoot * 2, wv * 0.2, bl * 0.18, now);
+            mOsc('sawtooth', wRoot * 2.01, wv * 0.18, bl * 0.18, now + bl * 0.25);
+            mOsc('sawtooth', wRoot * 1.99, wv * 0.15, bl * 0.15, now + bl * 0.5);
+            mOsc('sawtooth', wRoot * 2.005, wv * 0.12, bl * 0.12, now + bl * 0.75);
+
+            // ── ALARM SIREN: rising warzone alert ──
+            if (bi % 8 === 0) {
+                mSweep('square', 400, 900, wv * 0.06, bl * 2, now);
+                mSweep('square', 410, 890, wv * 0.04, bl * 1.8, now + bl * 0.1);
+            }
+            // Descending counter-siren
+            if (bi % 8 === 4) {
+                mSweep('square', 800, 350, wv * 0.05, bl * 2, now);
+            }
+
+            // ── RELENTLESS 32ND-NOTE KICKS ──
+            for (let k = 0; k < 4; k++) {
+                mKick(wv * 0.25, now + k * bl * 0.25);
+            }
+            // Snare on every 8th note
+            mSnare(wv * 0.3, now);
+            mSnare(wv * 0.2, now + bl * 0.5);
+
+            // ── DISSONANT STABS: tritone + minor 2nd cluster ──
+            if (bi % 2 === 0) {
+                const stab = M_COMBAT_LEAD[bi % M_COMBAT_LEAD.length];
+                mOsc('square', stab * 1.059, wv * 0.06, bl * 0.15, now); // minor 2nd
+                mOsc('square', stab * 1.414, wv * 0.05, bl * 0.12, now); // tritone
+                mOsc('sawtooth', stab * 0.5, wv * 0.08, bl * 0.2, now);  // sub octave
+            }
+
+            // ── WAR HORN: massive low brass blast every 16 beats ──
+            if (bi % 16 === 0) {
+                mOsc('sawtooth', 55, wv * 0.35, bl * 3, now);
+                mOsc('sawtooth', 55.5, wv * 0.3, bl * 2.8, now);
+                mOsc('sine', 27.5, wv * 0.25, bl * 4, now); // sub bass
+                mNoise(wv * 0.1, 0.3, now, 3000); // impact
+            }
+
+            // ── CHAOS FILL: random glitch bursts ──
+            if (bi % 4 === 3) {
+                for (let g = 0; g < 3; g++) {
+                    const gt = now + Math.random() * bl * 0.8;
+                    mNoise(wv * 0.06, 0.03, gt, 6000 + Math.random() * 6000);
+                }
+            }
+        }
+
         musicBeatIdx++;
     }
 
@@ -3547,8 +3801,10 @@ function resize() {
     screenW = window.innerWidth; screenH = window.innerHeight;
     // W and H stay fixed at VIEW_W x VIEW_H — all devices see the same game area
     W = VIEW_W; H = VIEW_H;
-    // Uniform scale to fill screen (cover mode — no letterboxing)
-    viewScale = Math.max(screenW / W, screenH / H);
+    // Height-fit scaling — always shows full height (HUD at top + controls at bottom)
+    // On narrow phones: sides overflow slightly (no critical UI there)
+    // On wide tablets: small black bars on sides (fair — same game area for everyone)
+    viewScale = screenH / H;
     viewOffX = (screenW - W * viewScale) / 2;
     viewOffY = (screenH - H * viewScale) / 2;
     canvas.width = screenW * dpr; canvas.height = screenH * dpr;

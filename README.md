@@ -45,7 +45,7 @@ node server.js
 node tests.js
 ```
 
-Pure Node.js — no test framework needed. Currently **2806 assertions** across **143 sections**, all passing.
+Pure Node.js — no test framework needed. Currently **2858 assertions** across **146 sections**, all passing.
 
 ---
 
@@ -54,7 +54,7 @@ Pure Node.js — no test framework needed. Currently **2806 assertions** across 
 ```
 index.html           (~3300 lines)  — THE ENTIRE GAME: HTML, CSS, JS, Canvas rendering, audio, UI
 server.js            (~1100 lines)  — Dedicated WebSocket game server (authoritative for PVP)
-tests.js             (~3900 lines)  — Comprehensive test suite (143 sections, 2806 assertions)
+tests.js             (~4200 lines)  — Comprehensive test suite (146 sections, 2858 assertions)
 sw.js                (~44 lines)    — Service worker for offline caching (PWA)
 capacitor.config.json               — Capacitor config for native Android/iOS builds
 package.json                        — Node.js config (only dependency: ws ^8.16.0)
@@ -118,6 +118,7 @@ Test sections cover:
 - **95–114**: Viewport, weapon balance, XP progression, world wrap rendering
 - **115–141**: Perk definitions, cosmetic shop, loadout system, perk gameplay integration, bug fix verification
 - **142–143**: Server-side perk validation, server perk integration
+- **144–146**: Unique ship shapes, music Layer 4 warzone trigger, height-fit tablet viewport
 
 ---
 
@@ -181,7 +182,7 @@ PICKUP_MAX = 5       Max pickups on map
 STATE_INTERVAL = 2   Server broadcast rate (every 2 frames = 30Hz)
 ```
 
-Viewport is fixed: `VIEW_W = 412, VIEW_H = 732` (scale-to-fill).
+Viewport is fixed: `VIEW_W = 412, VIEW_H = 732` (height-fit scaling — all devices see the same game area, tablets get side bars instead of top/bottom crop).
 
 ---
 
@@ -211,7 +212,7 @@ Viewport is fixed: `VIEW_W = 412, VIEW_H = 732` (scale-to-fill).
 - Stored in `shopData.unlockedPerks[]` and `shopData.equippedPerks[]` (localStorage key: `'gravShop'`)
 
 ### Cosmetics
-- 6 ship skins: default (free), neon, stealth, phoenix, gold, ghost
+- 6 ship skins (each with a unique ship silhouette + canvas preview in shop): default, neon, stealth, phoenix, gold, ghost
 - 6 trail effects: default (free), ice, fire, plasma, rainbow, toxic
 - Mock purchase system (no real payments implemented)
 - Visible to other players in PVP (server stores skin/trail per player, broadcasts in start data)
@@ -252,10 +253,11 @@ Maps are procedurally generated with seeded random (`mulberry32` PRNG) for deter
 
 ## Audio System
 
-Adaptive 3-layer music system (Doom/Halo inspired):
+Adaptive 4-layer music system (Doom/Halo inspired):
 1. **Layer 1 (Dread Drone)**: Always playing, low ambient
 2. **Layer 2 (War Drums)**: Activates during combat
 3. **Layer 3 (Palm-Mute Chugs)**: Activates during intense combat
+4. **Layer 4 (Warzone Chaos)**: Activates when 3+ enemies are on screen and intensity > 0.6 — sirens, 32nd-note kicks, dissonant stabs, war horns
 
 BPM ramps from 110 (calm) to 130 (combat). Kill stingers play on kills.
 
@@ -454,3 +456,13 @@ node server.js
 ```
 
 **The lesson:** Don't try to be surgical (killing by port PID). Just kill all node processes — in a dev environment there's usually only one thing running. The `Start-Sleep` is necessary because Windows doesn't release the port instantly.
+
+### 13. Tablet Viewport Cropped HUD & Controls
+
+**What we tried:** Used `Math.max(screenW/W, screenH/H)` (cover mode) for viewport scaling — fills the screen with no black bars.
+
+**What actually happened:** On tablets (Samsung Tab A9, wider aspect ratio than phones), `Math.max` picked width-based scaling, which made the viewport taller than the screen. The HUD (lives, kills) at the top was cropped off, and the joystick/fire button at the bottom were partially off-screen. Phones (S23 Ultra, taller aspect ratio) were fine because `Math.max` picked height-based scaling there.
+
+**The fix:** Changed to height-fit scaling: `viewScale = screenH / H`. This ensures the full viewport height is always visible on every device. On narrow phones, the sides overflow slightly (harmless — no critical UI at the edges). On wide tablets, small black bars appear on the sides. Everyone sees the same 412×732 game area. No unfair advantage.
+
+**The lesson:** `Math.max` scaling (cover) guarantees no bars but may crop important UI. When HUD and controls live at the top/bottom edges of the viewport, always fit to height. Test on devices with different aspect ratios, not just phones.

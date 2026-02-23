@@ -2719,29 +2719,38 @@ section('97. Fixed Viewport & DPR Scaling');
     assert(testDPR(undefined) === 1, 'undefined DPR defaults to 1');
     assert(testDPR(0) === 1, 'DPR 0 treated as falsy, defaults to 1');
 
-    // Viewport scale (cover mode — fill screen, crop edges if aspect differs)
+    // Viewport scale (height-fit mode — always shows full height for HUD/controls)
     function computeScale(screenW, screenH) {
-        return Math.max(screenW / VIEW_W, screenH / VIEW_H);
+        return screenH / VIEW_H;
     }
 
     // Phone (412x915, portrait): scale by height
     const phoneScale = computeScale(412, 915);
     assertApprox(phoneScale, 915 / VIEW_H, 0.01, 'phone scales by height (taller than reference)');
 
-    // Tablet (1024x768, landscape): scale by width
-    const tabScale = computeScale(1024, 768);
-    assertApprox(tabScale, 1024 / VIEW_W, 0.01, 'tablet scales by width (wider than reference)');
+    // Tablet (800x1340, portrait Tab A9): also scales by height — no top/bottom cropping
+    const tabScale = computeScale(800, 1340);
+    assertApprox(tabScale, 1340 / VIEW_H, 0.01, 'tablet scales by height (HUD always visible)');
+
+    // Tablet viewOffX: small side bars instead of top/bottom crop
+    const tabViewOffX = (800 - VIEW_W * tabScale) / 2;
+    assert(tabViewOffX >= 0, 'tablet has non-negative side offset (bars not crop)');
+
+    // Phone viewOffX: negative means sides overflow (crop) — acceptable
+    const phoneViewOffX = (412 - VIEW_W * phoneScale) / 2;
+    // On exact-width phone this is ~0; on narrow phone it goes negative
+    assert(typeof phoneViewOffX === 'number', 'phone side offset computable');
 
     // Both see VIEW_W x VIEW_H game units
     assert(VIEW_W === 412, 'game viewport width is 412');
     assert(VIEW_H === 732, 'game viewport height is 732');
 
     // Touch coordinate conversion: screen → game viewport
-    const scale = computeScale(1024, 768);
-    const offX = (1024 - VIEW_W * scale) / 2;
-    const offY = (768 - VIEW_H * scale) / 2;
-    const gameX = (512 - offX) / scale; // center of tablet screen
-    const gameY = (384 - offY) / scale;
+    const scale = computeScale(800, 1340);
+    const offX = (800 - VIEW_W * scale) / 2;
+    const offY = (1340 - VIEW_H * scale) / 2;
+    const gameX = (400 - offX) / scale; // center of tablet screen
+    const gameY = (670 - offY) / scale;
     assert(gameX >= 0 && gameX <= VIEW_W, 'converted X within viewport');
     assert(gameY >= 0 && gameY <= VIEW_H, 'converted Y within viewport');
 
@@ -3218,12 +3227,12 @@ const PERKS = [
     {id:'respawn',   name:'QUICK RESPAWN',     icon:'⏱', desc:'Faster respawn',                 cost:250,  pts:1, solo:{respawnMul:0.7},pvp:{respawnMul:0.85}},
 ];
 const SHIP_SKINS = [
-    {id:'default', name:'STANDARD',    desc:'Classic arrowhead',           price:0,    color:null, free:true},
-    {id:'neon',    name:'NEON',         desc:'Glowing neon outline',       price:99,   color:'#00ffff'},
-    {id:'stealth', name:'STEALTH',      desc:'Dark angular silhouette',    price:99,   color:'#334455'},
-    {id:'phoenix', name:'PHOENIX',      desc:'Fiery wing tips',            price:199,  color:'#ff4400'},
-    {id:'gold',    name:'GOLD',         desc:'Shimmering gold hull',       price:199,  color:'#ffcc00'},
-    {id:'ghost',   name:'GHOST',        desc:'Translucent phantom ship',   price:149,  color:'#8866ff'},
+    {id:'default', name:'STANDARD',    desc:'Classic arrowhead',           price:0,    color:null, free:true,  shape:'default'},
+    {id:'neon',    name:'NEON',         desc:'Sleek racer silhouette',     price:99,   color:'#00ffff',  shape:'neon'},
+    {id:'stealth', name:'STEALTH',      desc:'Dark angular silhouette',    price:99,   color:'#334455',  shape:'stealth'},
+    {id:'phoenix', name:'PHOENIX',      desc:'Spread-wing firebird',       price:199,  color:'#ff4400',  shape:'phoenix'},
+    {id:'gold',    name:'GOLD',         desc:'Ornate royal cruiser',       price:199,  color:'#ffcc00',  shape:'gold'},
+    {id:'ghost',   name:'GHOST',        desc:'Ethereal phantom vessel',    price:149,  color:'#8866ff',  shape:'ghost'},
 ];
 const TRAIL_EFFECTS = [
     {id:'default', name:'STANDARD',    desc:'Default exhaust',             price:0,    free:true},
@@ -3749,26 +3758,36 @@ section('129. Cosmetic Rendering — Skin Properties');
     // Default skin has no special color
     const def = SHIP_SKINS.find(s => s.id === 'default');
     assert(def.color === null, 'default skin has null color (uses player color)');
+    assert(def.shape === 'default', 'default skin uses default shape');
 
     // Neon skin
     const neon = SHIP_SKINS.find(s => s.id === 'neon');
     assert(neon.color === '#00ffff', 'neon skin is cyan');
+    assert(neon.shape === 'neon', 'neon skin has unique neon shape');
 
     // Stealth skin (angular shape)
     const stealth = SHIP_SKINS.find(s => s.id === 'stealth');
     assert(stealth.color === '#334455', 'stealth skin is dark');
+    assert(stealth.shape === 'stealth', 'stealth skin has unique stealth shape');
 
     // Phoenix (fire effects)
     const phoenix = SHIP_SKINS.find(s => s.id === 'phoenix');
     assert(phoenix.color === '#ff4400', 'phoenix skin is orange-red');
+    assert(phoenix.shape === 'phoenix', 'phoenix skin has unique phoenix shape');
 
     // Gold (shimmer)
     const gold = SHIP_SKINS.find(s => s.id === 'gold');
     assert(gold.color === '#ffcc00', 'gold skin is gold');
+    assert(gold.shape === 'gold', 'gold skin has unique gold shape');
 
     // Ghost (translucent — alpha 0.55)
     const ghost = SHIP_SKINS.find(s => s.id === 'ghost');
     assert(ghost.color === '#8866ff', 'ghost skin is purple');
+    assert(ghost.shape === 'ghost', 'ghost skin has unique ghost shape');
+
+    // Every skin has a unique shape
+    const shapes = SHIP_SKINS.map(s => s.shape);
+    assert(new Set(shapes).size === SHIP_SKINS.length, 'all 6 skins have unique shapes');
 
     // Skin color fallback: if no skin equipped, use player color
     const skinId = 'default';
@@ -4324,6 +4343,135 @@ section('143. Server Perk Integration — Respawn Shield');
     // Kamikaze respawn also uses perk
     const kamikazeResp = Math.floor(RESPAWN_T / 2 * rMul);
     assert(kamikazeResp === 38, 'server: kamikaze respawn timer with perk = 38');
+}
+
+// =====================================================
+section('144. Unique Ship Shapes — All Skins');
+// =====================================================
+{
+    // Every skin has a shape property
+    for (const s of SHIP_SKINS) {
+        assert(typeof s.shape === 'string' && s.shape.length > 0, s.id + ' has a shape defined');
+    }
+
+    // Every shape is unique
+    const shapes = SHIP_SKINS.map(s => s.shape);
+    assert(new Set(shapes).size === shapes.length, 'all ship shapes are unique');
+
+    // Shape IDs match skin IDs (by design — each skin gets its own shape)
+    for (const s of SHIP_SKINS) {
+        assert(s.shape === s.id, s.id + ' shape matches its skin id');
+    }
+
+    // Known shape list
+    const validShapes = ['default', 'neon', 'stealth', 'phoenix', 'gold', 'ghost'];
+    for (const s of SHIP_SKINS) {
+        assert(validShapes.includes(s.shape), s.id + ' shape is a recognized shape type');
+    }
+}
+
+// =====================================================
+section('145. Music Layer 4 — Warzone Chaos Trigger');
+// =====================================================
+{
+    // Layer 4 triggers when 3+ enemies are nearby AND intensity > 0.6
+    function warzoneActive(nearbyCount, ci) {
+        return nearbyCount >= 3 && ci > 0.6;
+    }
+
+    // Not active with < 3 nearby
+    assert(!warzoneActive(0, 0.8), 'warzone off: 0 nearby, high intensity');
+    assert(!warzoneActive(1, 0.9), 'warzone off: 1 nearby');
+    assert(!warzoneActive(2, 1.0), 'warzone off: 2 nearby, max intensity');
+
+    // Not active with low intensity
+    assert(!warzoneActive(3, 0.3), 'warzone off: 3 nearby but low intensity');
+    assert(!warzoneActive(5, 0.5), 'warzone off: 5 nearby but intensity 0.5');
+    assert(!warzoneActive(3, 0.6), 'warzone off: 3 nearby at intensity exactly 0.6 (>0.6 required)');
+
+    // Active with 3+ nearby AND intensity > 0.6
+    assert(warzoneActive(3, 0.61), 'warzone ON: 3 nearby, intensity 0.61');
+    assert(warzoneActive(3, 0.8), 'warzone ON: 3 nearby, intensity 0.8');
+    assert(warzoneActive(4, 0.7), 'warzone ON: 4 nearby, intensity 0.7');
+    assert(warzoneActive(7, 1.0), 'warzone ON: 7 nearby, max intensity');
+    assert(warzoneActive(3, 1.0), 'warzone ON: 3 nearby, max intensity');
+
+    // nearbyPlayerCount tracking logic
+    function countNearby(players, myIdx) {
+        let count = 0;
+        const me = players[myIdx];
+        if (!me || !me.alive) return 0;
+        for (let i = 0; i < players.length; i++) {
+            if (i === myIdx || !players[i] || !players[i].alive) continue;
+            const dx = me.x - players[i].x, dy = me.y - players[i].y;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            if (d < 500) count++;
+        }
+        return count;
+    }
+
+    const testPlayers = [
+        { x: 100, y: 100, alive: true },
+        { x: 200, y: 100, alive: true },     // 100 away
+        { x: 150, y: 150, alive: true },      // ~70 away
+        { x: 400, y: 100, alive: true },       // 300 away
+        { x: 1000, y: 1000, alive: true },     // ~1273 away
+    ];
+    assert(countNearby(testPlayers, 0) === 3, '3 players within 500 units');
+
+    const fewPlayers = [
+        { x: 100, y: 100, alive: true },
+        { x: 200, y: 100, alive: true },
+        { x: 700, y: 700, alive: true },  // far away
+    ];
+    assert(countNearby(fewPlayers, 0) === 1, 'only 1 within 500 units');
+
+    // Dead players don't count
+    const deadPlayers = [
+        { x: 100, y: 100, alive: true },
+        { x: 150, y: 100, alive: false },
+        { x: 200, y: 100, alive: false },
+        { x: 250, y: 100, alive: true },
+    ];
+    assert(countNearby(deadPlayers, 0) === 1, 'dead players excluded from nearby count');
+}
+
+// =====================================================
+section('146. Height-Fit Viewport — Tablet Controls Visible');
+// =====================================================
+{
+    const VIEW_W = 412, VIEW_H = 732;
+    function heightFitScale(screenW, screenH) {
+        return screenH / VIEW_H;
+    }
+
+    // Samsung S23 Ultra (portrait CSS: ~393x851)
+    const s23Scale = heightFitScale(393, 851);
+    assertApprox(s23Scale, 851 / 732, 0.01, 'S23U scales by height');
+    const s23OffY = (851 - VIEW_H * s23Scale) / 2;
+    assertApprox(s23OffY, 0, 1, 'S23U has ~0 vertical offset (height fills screen)');
+
+    // Samsung Tab A9 (portrait CSS: ~800x1340)
+    const tabScale = heightFitScale(800, 1340);
+    assertApprox(tabScale, 1340 / 732, 0.01, 'Tab A9 scales by height');
+    const tabOffY = (1340 - VIEW_H * tabScale) / 2;
+    assertApprox(tabOffY, 0, 1, 'Tab A9 has ~0 vertical offset (height fills screen)');
+    const tabOffX = (800 - VIEW_W * tabScale) / 2;
+    assert(tabOffX > 0, 'Tab A9 has positive side offset (black bars, not crop)');
+
+    // Controls at H-80 are visible on tablet
+    const controlsY = (VIEW_H - 80) * tabScale + tabOffY;
+    assert(controlsY < 1340, 'Tab A9: joystick Y position is on screen');
+    assert(controlsY > 0, 'Tab A9: joystick Y is positive');
+
+    // HUD at y=15 is visible on tablet
+    const hudY = 15 * tabScale + tabOffY;
+    assert(hudY > 0, 'Tab A9: HUD lives display is on screen (not cropped off top)');
+    assert(hudY < 100, 'Tab A9: HUD lives are near top of screen');
+
+    // Fire button visible (at H-70)
+    const fireBtnY = (VIEW_H - 70) * tabScale + tabOffY;
+    assert(fireBtnY < 1340, 'Tab A9: fire button is fully on screen');
 }
 
 console.log(`\n${'='.repeat(50)}`);
