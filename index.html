@@ -1755,7 +1755,15 @@ function handleEvent(evt) {
             if (!isHost) { killEffectBoom(ex, ey, COLORS[evt.i]||'#fff', evt.ke||'default'); screenShake=8; }
             break;
         case 'baseExp': if(!isHost) baseBoom(ex,ey,evt.o); sndAt('baseExp', ex, ey); bumpCombat(COMBAT_KILL_BUMP); break;
-        case 'bugKill': sndAt('bugKill', ex, ey); bumpCombat(COMBAT_HIT_BUMP); if(!isHost) screenShake=12; break;
+        case 'bugKill':
+            sndAt('bugKill', ex, ey); bumpCombat(COMBAT_HIT_BUMP);
+            if(!isHost) {
+                boom(ex,ey,'#ffffff',2.5); boom(ex+(Math.random()-.5)*20,ey-10,'#ff4400',1.5);
+                for(let i=0;i<20;i++){const a=Math.random()*Math.PI*2,s=Math.random()*6+2;particles.push({x:ex,y:ey,vx:Math.cos(a)*s,vy:Math.sin(a)*s-1,life:35+Math.random()*25,maxLife:35+Math.random()*25,color:['#ff4400','#ff8800','#ffffff','#ffcc00'][Math.floor(Math.random()*4)],size:Math.random()*3+1});}
+                screenShake=15;
+                if(evt.i===myIndex) doHaptic(120);
+            }
+            break;
         case 'streak':
             killFeed.push({text: (players[evt.i]?players[evt.i].name:'?')+': '+evt.sn, color: players[evt.i]?players[evt.i].color:'#fff', timer:180, big:evt.sk>=3});
             break;
@@ -1829,9 +1837,12 @@ function respawnPlayer(p) {
         if (be.owner===p.id && be.t<be.dur && dist(p.x,p.y,be.x,be.y)<RESPAWN_KILL_R) {
             const isLocalR = (isHost && p.id === 0) || (!isHost && p.id === myIndex);
             p.alive=false; p.lives--; p.respawnT=Math.floor(RESPAWN_T/2 * (isLocalR ? activeBonuses.respawnMul : 1)); p.shield=0;
-            boom(p.x,p.y,'#ffffff',1.5);
+            // Dramatic repeated death explosion
+            boom(p.x,p.y,'#ffffff',2.5);
+            boom(p.x+(Math.random()-.5)*20,p.y-10,'#ff4400',1.5);
             emitEvent({t:'e',n:'bugKill',i:p.id,x:p.x,y:p.y});
-            for (let i=0;i<10;i++) particles.push({x:p.x,y:p.y,vx:(Math.random()-.5)*8,vy:(Math.random()-.5)*8,life:30,maxLife:30,color:'#ffffff',size:3});
+            for (let i=0;i<20;i++){const a=Math.random()*Math.PI*2,s=Math.random()*6+2; particles.push({x:p.x,y:p.y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-1,life:35+Math.random()*25,maxLife:35+Math.random()*25,color:['#ff4400','#ff8800','#ffffff','#ffcc00'][Math.floor(Math.random()*4)],size:Math.random()*3+1});}
+            if(p.id===myIndex){screenShake=Math.max(screenShake,15);doHaptic(120);}
             checkGameEnd();
             return;
         }
@@ -2234,9 +2245,22 @@ function hostUpdate() {
     // Base explosions
     for (let i=baseExps.length-1;i>=0;i--) {
         const be=baseExps[i];be.t++;be.phase+=.1;
-        if (be.t<be.dur&&Math.random()>.6){const a=Math.random()*Math.PI*2,d=Math.random()*be.r;
-        particles.push({x:be.x+Math.cos(a)*d,y:be.y+Math.sin(a)*d,vx:(Math.random()-.5)*3,vy:-Math.random()*3-1,life:20+Math.random()*20,maxLife:20+Math.random()*20,color:['#ff4400','#ff8800','#ffcc00','#ff0000'][Math.floor(Math.random()*4)],size:Math.random()*3+1});}
-        for (const p of players){if(p.alive&&p.id!==baseExps[i].owner) continue; if(p.alive&&p.id===be.owner&&be.t<be.dur&&dist(p.x,p.y,be.x,be.y)<RESPAWN_KILL_R){p.invT=0;killPlayer(p,true);}}
+        // Fire particles (more intense while burning)
+        if (be.t<be.dur&&Math.random()>.4){const a=Math.random()*Math.PI*2,d=Math.random()*be.r;
+        particles.push({x:be.x+Math.cos(a)*d,y:be.y+Math.sin(a)*d,vx:(Math.random()-.5)*3,vy:-Math.random()*4-1.5,life:25+Math.random()*25,maxLife:25+Math.random()*25,color:['#ff4400','#ff8800','#ffcc00','#ff0000'][Math.floor(Math.random()*4)],size:Math.random()*4+1.5});}
+        // Rising embers
+        if (be.t<be.dur&&Math.random()>.85){particles.push({x:be.x+(Math.random()-.5)*be.r,y:be.y,vx:(Math.random()-.5)*1,vy:-Math.random()*2-2,life:60+Math.random()*40,maxLife:60+Math.random()*40,color:'#ffcc00',size:Math.random()*2+0.5});}
+        // Continuous shake + haptic for the base owner
+        if (be.t<be.dur&&be.owner===myIndex){screenShake=Math.max(screenShake,4+Math.sin(be.phase*2)*2);}
+        for (const p of players){if(p.alive&&p.id!==baseExps[i].owner) continue; if(p.alive&&p.id===be.owner&&be.t<be.dur&&dist(p.x,p.y,be.x,be.y)<RESPAWN_KILL_R){
+            p.invT=0;
+            // Dramatic death explosion at base
+            boom(p.x,p.y,p.color,2.5);
+            boom(p.x+(Math.random()-.5)*20,p.y+(Math.random()-.5)*20,'#ff4400',1.5);
+            for(let j=0;j<15;j++){const da=Math.random()*Math.PI*2,ds=Math.random()*5+2;particles.push({x:p.x,y:p.y,vx:Math.cos(da)*ds,vy:Math.sin(da)*ds-1,life:30+Math.random()*30,maxLife:30+Math.random()*30,color:['#ff4400','#ff8800','#ffcc00','#ffffff'][Math.floor(Math.random()*4)],size:Math.random()*3+1});}
+            if(p.id===myIndex){screenShake=Math.max(screenShake,12);doHaptic(120);}
+            killPlayer(p,true);}
+        }
         if (be.t>=be.dur) baseExps.splice(i,1);
     }
 
@@ -2655,13 +2679,24 @@ function draw() {
         ctx.font='9px Courier New';ctx.textAlign='center';ctx.fillText(pp.name,b.x+b.w/2,b.y-4);
     }
 
-    // Base explosions
+    // Base explosions — dramatic multi-layer fire
     for (const be of baseExps){
         const prog=be.t/be.dur,pr=be.r*(.8+Math.sin(be.phase)*.2),al=(1-prog)*.6;
+        // Outer glow (larger, dimmer)
+        const og=ctx.createRadialGradient(be.x,be.y,0,be.x,be.y,pr*1.6);
+        og.addColorStop(0,`rgba(255,60,0,${al*.3})`);og.addColorStop(.5,`rgba(200,30,0,${al*.15})`);og.addColorStop(1,'rgba(80,0,0,0)');
+        ctx.fillStyle=og;ctx.beginPath();ctx.arc(be.x,be.y,pr*1.6,0,Math.PI*2);ctx.fill();
+        // Core fire
         const gr=ctx.createRadialGradient(be.x,be.y,0,be.x,be.y,pr);
-        gr.addColorStop(0,`rgba(255,100,0,${al})`);gr.addColorStop(.4,`rgba(255,50,0,${al*.6})`);gr.addColorStop(1,'rgba(100,0,0,0)');
+        gr.addColorStop(0,`rgba(255,200,50,${al})`);gr.addColorStop(.3,`rgba(255,100,0,${al*.8})`);gr.addColorStop(.6,`rgba(255,50,0,${al*.5})`);gr.addColorStop(1,'rgba(100,0,0,0)');
         ctx.fillStyle=gr;ctx.beginPath();ctx.arc(be.x,be.y,pr,0,Math.PI*2);ctx.fill();
-        if (prog<.8&&Math.sin(be.phase*3)>0){ctx.fillStyle=`rgba(255,0,0,${al})`;ctx.font='bold 11px Courier New';ctx.textAlign='center';ctx.fillText('⚠ DANGER ⚠',be.x,be.y-pr-6);}
+        // White-hot centre flicker
+        if(Math.random()>.3){const wr=pr*.25+Math.random()*pr*.15;
+        const wg=ctx.createRadialGradient(be.x,be.y,0,be.x,be.y,wr);
+        wg.addColorStop(0,`rgba(255,255,200,${al*.7})`);wg.addColorStop(1,'rgba(255,200,50,0)');
+        ctx.fillStyle=wg;ctx.beginPath();ctx.arc(be.x,be.y,wr,0,Math.PI*2);ctx.fill();}
+        // Danger text
+        if (prog<.8&&Math.sin(be.phase*3)>0){ctx.fillStyle=`rgba(255,0,0,${al})`;ctx.font='bold 11px Courier New';ctx.textAlign='center';ctx.fillText('\u26A0 DANGER \u26A0',be.x,be.y-pr-6);}
     }
 
     // Particles — viewport cull
@@ -2833,6 +2868,29 @@ function draw() {
     } // end wrapOffsets loop
 
     ctx.restore(); // end camera
+
+    // Red vignette overlay when MY base is on fire
+    const myBaseOnFire = baseExps.find(be => be.owner === myIndex && be.t < be.dur);
+    if (myBaseOnFire) {
+        const prog = myBaseOnFire.t / myBaseOnFire.dur;
+        const pulse = 0.15 + Math.sin(myBaseOnFire.phase * 3) * 0.08;
+        const alpha = (1 - prog) * pulse;
+        // Red vignette edges
+        const vg = ctx.createRadialGradient(W/2, H/2, W*0.25, W/2, H/2, W*0.75);
+        vg.addColorStop(0, 'rgba(0,0,0,0)');
+        vg.addColorStop(1, `rgba(255,0,0,${alpha})`);
+        ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+        // Flashing warning text
+        if (Math.sin(myBaseOnFire.phase * 4) > 0) {
+            const wFs = Math.max(14, Math.min(W * 0.04, 20));
+            ctx.fillStyle = `rgba(255,60,0,${(1-prog)*0.9})`;
+            ctx.font = `bold ${wFs}px Courier New`; ctx.textAlign = 'center';
+            ctx.fillText('\uD83D\uDD25 BASE ON FIRE \uD83D\uDD25', W/2, H*0.12);
+            ctx.fillStyle = `rgba(255,180,0,${(1-prog)*0.6})`;
+            ctx.font = `bold ${Math.round(wFs*0.65)}px Courier New`;
+            ctx.fillText('LIVES DRAINING', W/2, H*0.12 + wFs*1.2);
+        }
+    }
 
     // Score floats (floating +1, WEAPON EXPIRED, etc.)
     for (let i=scoreFloats.length-1;i>=0;i--) {
