@@ -1168,7 +1168,7 @@ function joinPublicRoom(code) {
     const name = document.getElementById('browseName').value.trim() || 'PLAYER';
     document.getElementById('browseErr').textContent = '';
     wsConnect(() => {
-        ws.send(JSON.stringify({ t: 'join', code: code, name: name }));
+        ws.send(JSON.stringify({ t: 'join', code: code, name: name, perks: shopData.equippedPerks, skin: shopData.activeSkin, trail: shopData.activeTrail, engineSound: shopData.activeEngine, killEffect: shopData.activeKillEffect }));
     });
 }
 

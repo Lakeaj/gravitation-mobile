@@ -372,7 +372,7 @@ class Room {
     }
 
     broadcastLobby() {
-        const lobbyData = this.lobbyPlayers.map(p => ({ name: p.name, color: p.color, index: p.index, ready: p.ready }));
+        const lobbyData = this.lobbyPlayers.map(p => ({ name: p.name, color: p.color, index: p.index, ready: p.ready, skin: p.skin || 'default', trail: p.trail || 'default', killEffect: p.killEffect || 'default' }));
         for (const p of this.lobbyPlayers) {
             this.sendTo(p.ws, {
                 t: 'lobby',
