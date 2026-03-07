@@ -558,7 +558,7 @@ function snd(t, vol) {
         const n = ac.currentTime;
         switch (t) {
             case 'shoot': o.type='square'; o.frequency.setValueAtTime(600,n); o.frequency.exponentialRampToValueAtTime(100,n+.1); g.gain.setValueAtTime(.07*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.1); o.start(n); o.stop(n+.1); break;
-            case 'explode': o.type='sawtooth'; o.frequency.setValueAtTime(150,n); o.frequency.exponentialRampToValueAtTime(30,n+.35); g.gain.setValueAtTime(.1*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.35); o.start(n); o.stop(n+.35); break;
+            case 'explode': { const pv=0.85+Math.random()*0.3; o.type='sawtooth'; o.frequency.setValueAtTime(150*pv,n); o.frequency.exponentialRampToValueAtTime(30*pv,n+.35); g.gain.setValueAtTime(.1*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.35); o.start(n); o.stop(n+.35); break; }
             case 'baseExp': o.type='sawtooth'; o.frequency.setValueAtTime(200,n); o.frequency.exponentialRampToValueAtTime(15,n+.8); g.gain.setValueAtTime(.13*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.8); o.start(n); o.stop(n+.8); break;
             case 'land': o.type='sine'; o.frequency.setValueAtTime(523,n); o.frequency.setValueAtTime(659,n+.08); o.frequency.setValueAtTime(784,n+.16); g.gain.setValueAtTime(.07*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.25); o.start(n); o.stop(n+.25); break;
             case 'bugKill': o.type='square'; o.frequency.setValueAtTime(100,n); o.frequency.exponentialRampToValueAtTime(2000,n+.05); o.frequency.exponentialRampToValueAtTime(50,n+.25); g.gain.setValueAtTime(.1*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.25); o.start(n); o.stop(n+.25); break;
@@ -572,6 +572,12 @@ function snd(t, vol) {
             case 'whizzHoming': o.type='triangle'; o.frequency.setValueAtTime(1200,n); o.frequency.setValueAtTime(1400,n+.04); o.frequency.setValueAtTime(1100,n+.08); o.frequency.exponentialRampToValueAtTime(600,n+.15); g.gain.setValueAtTime(.05*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.15); o.start(n); o.stop(n+.16); break;
             case 'whizzRapid': o.type='square'; o.frequency.setValueAtTime(1500+Math.random()*500,n); o.frequency.exponentialRampToValueAtTime(500,n+.06); g.gain.setValueAtTime(.04*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06); o.start(n); o.stop(n+.07); break;
             case 'whizzBeam': o.type='sawtooth'; o.frequency.setValueAtTime(2200,n); o.frequency.linearRampToValueAtTime(1800,n+.1); g.gain.setValueAtTime(.04*vol,n); g.gain.linearRampToValueAtTime(.02*vol,n+.06); g.gain.exponentialRampToValueAtTime(.001,n+.1); o.start(n); o.stop(n+.11); break;
+            // Shield break — glass shatter (last shield popping)
+            case 'shieldBreak': o.type='square'; o.frequency.setValueAtTime(4000+Math.random()*2000,n); o.frequency.exponentialRampToValueAtTime(800,n+.15); g.gain.setValueAtTime(.14*vol,n); g.gain.setValueAtTime(.08*vol,n+.03); g.gain.exponentialRampToValueAtTime(.001,n+.18); o.start(n); o.stop(n+.19); break;
+            // Wall/terrain impact — metallic thud
+            case 'wallHit': o.type='triangle'; o.frequency.setValueAtTime(250+Math.random()*80,n); o.frequency.exponentialRampToValueAtTime(60,n+.08); g.gain.setValueAtTime(.06*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.1); o.start(n); o.stop(n+.1); break;
+            // Pickup spawn sparkle
+            case 'pickupSpawn': o.type='sine'; o.frequency.setValueAtTime(1200,n); o.frequency.setValueAtTime(1600,n+.06); o.frequency.setValueAtTime(2000,n+.12); o.frequency.exponentialRampToValueAtTime(1400,n+.2); g.gain.setValueAtTime(.04*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.25); o.start(n); o.stop(n+.25); break;
         }
     } catch (e) {}
 }
@@ -587,51 +593,53 @@ function sndAt(t, x, y) {
 }
 
 // Engine sound function — one-shot per engine type (called every 8 frames)
-function engineSnd(engineId, vol) {
+// speed: 0-1 ratio of current speed to MAX_SPD for pitch modulation
+function engineSnd(engineId, vol, speed) {
     if (!ac) return;
     vol = (vol !== undefined ? vol : 1) * settings.sfxVol;
     if (vol <= 0.01) return;
+    const pm = 1 + (speed || 0) * 0.4; // pitch multiplier: 1.0 at rest → 1.4 at max speed
     try {
         const o = ac.createOscillator(), g = ac.createGain();
         o.connect(g); g.connect(ac.destination);
         const n = ac.currentTime;
         switch(engineId) {
             case 'rumble':
-                o.type='sawtooth'; o.frequency.setValueAtTime(40,n); o.frequency.exponentialRampToValueAtTime(25,n+.08);
+                o.type='sawtooth'; o.frequency.setValueAtTime(40*pm,n); o.frequency.exponentialRampToValueAtTime(25*pm,n+.08);
                 g.gain.setValueAtTime(.035*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
                 o.start(n); o.stop(n+.08); break;
             case 'whine':
-                o.type='triangle'; o.frequency.setValueAtTime(600,n); o.frequency.exponentialRampToValueAtTime(400,n+.06);
+                o.type='triangle'; o.frequency.setValueAtTime(600*pm,n); o.frequency.exponentialRampToValueAtTime(400*pm,n+.06);
                 g.gain.setValueAtTime(.015*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06);
                 o.start(n); o.stop(n+.06); break;
             case 'pulse':
-                o.type='square'; o.frequency.setValueAtTime(120,n); o.frequency.setValueAtTime(60,n+.02);
-                o.frequency.setValueAtTime(120,n+.04); o.frequency.exponentialRampToValueAtTime(60,n+.08);
+                o.type='square'; o.frequency.setValueAtTime(120*pm,n); o.frequency.setValueAtTime(60*pm,n+.02);
+                o.frequency.setValueAtTime(120*pm,n+.04); o.frequency.exponentialRampToValueAtTime(60*pm,n+.08);
                 g.gain.setValueAtTime(.03*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
                 o.start(n); o.stop(n+.08); break;
             case 'roar':
-                o.type='sawtooth'; o.frequency.setValueAtTime(200,n); o.frequency.exponentialRampToValueAtTime(50,n+.08);
+                o.type='sawtooth'; o.frequency.setValueAtTime(200*pm,n); o.frequency.exponentialRampToValueAtTime(50*pm,n+.08);
                 g.gain.setValueAtTime(.04*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
                 o.start(n); o.stop(n+.08); break;
             case 'hum':
-                o.type='sine'; o.frequency.setValueAtTime(180,n); o.frequency.exponentialRampToValueAtTime(160,n+.08);
+                o.type='sine'; o.frequency.setValueAtTime(180*pm,n); o.frequency.exponentialRampToValueAtTime(160*pm,n+.08);
                 g.gain.setValueAtTime(.02*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.08);
                 o.start(n); o.stop(n+.08); break;
             default:
-                o.type='sawtooth'; o.frequency.setValueAtTime(80,n); o.frequency.exponentialRampToValueAtTime(60,n+.06);
+                o.type='sawtooth'; o.frequency.setValueAtTime(80*pm,n); o.frequency.exponentialRampToValueAtTime(60*pm,n+.06);
                 g.gain.setValueAtTime(.025*vol,n); g.gain.exponentialRampToValueAtTime(.001,n+.06);
                 o.start(n); o.stop(n+.06); break;
         }
     } catch(e){}
 }
-function engineSndAt(engineId, x, y) {
+function engineSndAt(engineId, x, y, speed) {
     if (!ac) return;
     const mi = myIndex >= 0 ? myIndex : 0;
     const me = players[mi];
-    if (!me) { engineSnd(engineId, 1); return; }
+    if (!me) { engineSnd(engineId, 1, speed); return; }
     const d = dist(x, y, me.x, me.y);
     const vol = Math.max(0, 1 - d / 900);
-    engineSnd(engineId, vol);
+    engineSnd(engineId, vol, speed);
 }
 
 // Kill effect explosion — custom particle effects per kill effect type
@@ -892,7 +900,7 @@ function showScreen(id) {
     document.querySelectorAll('.overlay').forEach(el => el.classList.remove('active'));
     if (id) document.getElementById(id).classList.add('active');
 }
-function showMenu() { cleanup(); showScreen('menuScreen'); }
+function showMenu() { cleanup(); showScreen('menuScreen'); startMenuTheme(); }
 function showMultiplayer() { showScreen('multiplayerScreen'); }
 function showCreate() { showScreen('createScreen'); document.getElementById('createErr').textContent=''; document.getElementById('createStatus').textContent=''; setPublic(false); }
 function showJoin() { showScreen('joinScreen'); document.getElementById('joinErr').textContent=''; document.getElementById('joinStatus').textContent=''; }
@@ -1027,6 +1035,7 @@ function handleServerMessage(data) {
         case 'over':
             running = false;
             cancelAnimationFrame(af);
+            musicStinger('defeat');
             if (data.stats) {
                 showScoreboard(data.w, data.stats);
             } else {
@@ -1147,6 +1156,7 @@ function cleanup() {
     running = false;
     cancelAnimationFrame(af);
     stopMusic();
+    stopMenuTheme();
     if (ws && !isHost) { ws.close(); ws = null; } // close WS for multiplayer; keep for solo/survival
     lobbyPlayers = [];
     isHost = false;
@@ -1286,6 +1296,7 @@ function spawnSurvivalWave(wave) {
     const bossText = isBossWave ? ' \u2605 BOSS WAVE \u2605' : '';
     waveAnnouncement = {text:'WAVE '+wave+bossText, timer:150, sub:botCount+' BOT'+(botCount>1?'S':'')+' · '+
         (difficulty<=3?'EASY':difficulty<=6?'MEDIUM':'HARD')+modText};
+    musicStinger('wave');
 }
 
 function survivalWaveCleared() {
@@ -1300,6 +1311,7 @@ function survivalWaveCleared() {
 function survivalGameOver() {
     if (survivalEnding) return; // prevent double game-over
     survivalEnding = true;
+    musicStinger('defeat');
     const wave = survivalWave;
     const best = survivalBest[lobbyMap] || 0;
     if (wave > best) {
@@ -1526,6 +1538,7 @@ function hostStartGame() {
 }
 
 function beginGame(data) {
+    stopMenuTheme();
     initAudio();
     resize();
     worldW = data.worldW;
@@ -1748,6 +1761,14 @@ function handleEvent(evt) {
                 for (let i=0;i<12;i++){const a=i/12*Math.PI*2;particles.push({x:ex+Math.cos(a)*SHIP_SZ*2,y:ey+Math.sin(a)*SHIP_SZ*2,vx:Math.cos(a)*3,vy:Math.sin(a)*3,life:20,maxLife:20,color:'#00ffaa',size:2.5});}
             }
             break;
+        case 'shieldBreak':
+            sndAt('shieldBreak', ex, ey);
+            bumpCombat(COMBAT_SHIELD_BUMP * 1.5);
+            if (!isHost) {
+                boom(ex, ey, '#ff4444', 2.5);
+                for (let i=0;i<20;i++){const a=i/20*Math.PI*2;particles.push({x:ex+Math.cos(a)*SHIP_SZ*2,y:ey+Math.sin(a)*SHIP_SZ*2,vx:Math.cos(a)*4,vy:Math.sin(a)*4,life:25,maxLife:25,color:'#ff6644',size:3});}
+            }
+            break;
         case 'kill':
             sndAt('explode', ex, ey);
             bumpCombat(COMBAT_KILL_BUMP);
@@ -1767,6 +1788,9 @@ function handleEvent(evt) {
         case 'streak':
             killFeed.push({text: (players[evt.i]?players[evt.i].name:'?')+': '+evt.sn, color: players[evt.i]?players[evt.i].color:'#fff', timer:180, big:evt.sk>=3});
             break;
+        case 'pickupSpawn':
+            sndAt('pickupSpawn', ex, ey);
+            break;
     }
 }
 
@@ -1777,9 +1801,16 @@ function killPlayer(p, force, killerIdx) {
         p.shield--;
         p.invT = 1; // ~10ms grace (1 frame at 60fps)
         p.flashTimer = 12; // hit flash effect
-        boom(p.x,p.y,'#00ffaa',1.5);
-        for (let i=0;i<12;i++){const a=i/12*Math.PI*2;particles.push({x:p.x+Math.cos(a)*SHIP_SZ*2,y:p.y+Math.sin(a)*SHIP_SZ*2,vx:Math.cos(a)*3,vy:Math.sin(a)*3,life:20,maxLife:20,color:'#00ffaa',size:2.5});}
-        emitEvent({t:'e',n:'shieldHit',x:p.x,y:p.y});
+        if (p.shield === 0) {
+            // Last shield broke — dramatic shatter
+            boom(p.x,p.y,'#ff4444',2.5);
+            for (let i=0;i<20;i++){const a=i/20*Math.PI*2;particles.push({x:p.x+Math.cos(a)*SHIP_SZ*2,y:p.y+Math.sin(a)*SHIP_SZ*2,vx:Math.cos(a)*4,vy:Math.sin(a)*4,life:25,maxLife:25,color:'#ff6644',size:3});}
+            emitEvent({t:'e',n:'shieldBreak',x:p.x,y:p.y});
+        } else {
+            boom(p.x,p.y,'#00ffaa',1.5);
+            for (let i=0;i<12;i++){const a=i/12*Math.PI*2;particles.push({x:p.x+Math.cos(a)*SHIP_SZ*2,y:p.y+Math.sin(a)*SHIP_SZ*2,vx:Math.cos(a)*3,vy:Math.sin(a)*3,life:20,maxLife:20,color:'#00ffaa',size:2.5});}
+            emitEvent({t:'e',n:'shieldHit',x:p.x,y:p.y});
+        }
         doHaptic(30); // haptic feedback
         return;
     }
@@ -1867,6 +1898,10 @@ function checkGameEnd() {
     if (alive.length <= 1) {
         const winner = alive.length === 1 ? alive[0].name + ' WINS!' : 'DRAW!';
         const stats = players.map((p,i)=>({name:p.name, color:p.color, kills:p.score, deaths:playerDeaths[i]||0, lives:p.lives}));
+        // Victory/defeat stinger
+        const me = players[myIndex];
+        if (me && me.lives > 0 && alive.length === 1) musicStinger('victory');
+        else musicStinger('defeat');
         setTimeout(() => {
             running = false;
             cancelAnimationFrame(af);
@@ -1932,6 +1967,7 @@ function spawnPickup() {
                     const py = pl.y - PICKUP_R - 5;
                     if (py > ceilY + 20 && py < groundY - 20) {
                         pickups.push({x, y:py, type:randomPickupType(), bobPhase:Math.random()*Math.PI*2});
+                        emitEvent({t:'e',n:'pickupSpawn',x:x,y:py});
                         placed = true; break;
                     }
                 }
@@ -1949,6 +1985,7 @@ function spawnPickup() {
         }
         if (tooClose) continue;
         pickups.push({x, y, type:randomPickupType(), bobPhase:Math.random()*Math.PI*2});
+        emitEvent({t:'e',n:'pickupSpawn',x:x,y:y});
         return;
     }
 }
@@ -2291,7 +2328,10 @@ function hostUpdate() {
     // Thrust sounds (host) — every 8 frames to keep it light
     if (frame % 8 === 0) {
         for (const p of players) {
-            if (p.alive && (p.thrusting || p.revThrusting)) engineSndAt(p.engineSound || 'default', p.x, p.y);
+            if (p.alive && (p.thrusting || p.revThrusting)) {
+                const spd = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
+                engineSndAt(p.engineSound || 'default', p.x, p.y, Math.min(spd / MAX_SPD, 1));
+            }
         }
     }
 
@@ -2361,18 +2401,18 @@ function clientUpdate() {
         const tInfo = getTerrainYAt(me.x, terrain);
         if (tInfo && me.y + SHIP_SZ >= tInfo.y) {
             if (canLand(me, tInfo)) { me.y = tInfo.y - SHIP_SZ; me.vx = 0; me.vy = 0; me.landed = true; }
-            else { me.y = tInfo.y - SHIP_SZ; me.vy = -Math.abs(me.vy) * 0.3; }
+            else { if (Math.abs(me.vy) > 0.5) snd('wallHit'); me.y = tInfo.y - SHIP_SZ; me.vy = -Math.abs(me.vy) * 0.3; }
         }
         const cInfo = getTerrainYAt(me.x, ceiling);
-        if (cInfo && me.y - SHIP_SZ <= cInfo.y) { me.y = cInfo.y + SHIP_SZ; me.vy = Math.abs(me.vy) * 0.3; }
+        if (cInfo && me.y - SHIP_SZ <= cInfo.y) { if (Math.abs(me.vy) > 0.5) snd('wallHit'); me.y = cInfo.y + SHIP_SZ; me.vy = Math.abs(me.vy) * 0.3; }
         for (const pl of platforms) {
             if (me.x >= pl.x && me.x <= pl.x + pl.width && me.y + SHIP_SZ >= pl.y && me.y + SHIP_SZ <= pl.y + 10 && me.vy >= 0) {
                 if (canLand(me, {y: pl.y, slope: 0})) { me.y = pl.y - SHIP_SZ; me.vx = 0; me.vy = 0; me.landed = true; }
-                else { me.y = pl.y - SHIP_SZ; me.vy = -Math.abs(me.vy) * 0.3; }
+                else { if (Math.abs(me.vy) > 0.5) snd('wallHit'); me.y = pl.y - SHIP_SZ; me.vy = -Math.abs(me.vy) * 0.3; }
             }
         }
-        if (me.y < SHIP_SZ) { me.y = SHIP_SZ; me.vy = Math.abs(me.vy) * 0.3; }
-        if (me.y > worldH - SHIP_SZ) { me.y = worldH - SHIP_SZ; me.vy = -Math.abs(me.vy) * 0.3; }
+        if (me.y < SHIP_SZ) { if (Math.abs(me.vy) > 0.5) snd('wallHit'); me.y = SHIP_SZ; me.vy = Math.abs(me.vy) * 0.3; }
+        if (me.y > worldH - SHIP_SZ) { if (Math.abs(me.vy) > 0.5) snd('wallHit'); me.y = worldH - SHIP_SZ; me.vy = -Math.abs(me.vy) * 0.3; }
     } else if (me && me.alive && me.landed) {
         if (li.thrust) { me.landed = false; me.vy = -THRUST * activeBonuses.thrustMul * 2; me.thrusting = true; } else { me.thrusting = false; }
         me.angle += li.rot * ROT_SPD_MAX;
@@ -2480,7 +2520,10 @@ function clientUpdate() {
     thrustSndFrame++;
     if (thrustSndFrame % 8 === 0) {
         for (const p of players) {
-            if (p.alive && (p.thrusting || p.revThrusting)) engineSndAt(p.engineSound || 'default', p.x, p.y);
+            if (p.alive && (p.thrusting || p.revThrusting)) {
+                const spd = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
+                engineSndAt(p.engineSound || 'default', p.x, p.y, Math.min(spd / MAX_SPD, 1));
+            }
         }
     }
 
@@ -4172,6 +4215,7 @@ const M_COMBAT_5TH  = [123.47, 123.47, 130.81, 123.47, 116.54, 123.47, 123.47, 1
 const M_COMBAT_LEAD = [659.25, 698.46, 659.25, 587.33, 523.25, 587.33, 659.25, 783.99]; // E5 lead
 
 let musicBeatIdx = 0, musicBpm = 130;
+let prevMusicLayer = 0; // track which layer was active for transition effects
 
 function startMusic() {
     if (musicPlaying || settings.musicVol <= 0) return;
@@ -4436,6 +4480,65 @@ function startMusic() {
             }
         }
 
+        // ═══════════════════════════════════════════════
+        // DYNAMIC LAYER TRANSITIONS (#1)
+        // Detect when crossing layer thresholds — add impact hit
+        // ═══════════════════════════════════════════════
+        const curLayer = ci > 0.4 ? 3 : ci > 0.12 ? 2 : 1;
+        if (curLayer !== prevMusicLayer && prevMusicLayer > 0) {
+            if (curLayer > prevMusicLayer) {
+                // Escalating — impact slam + riser tail
+                mSweep('sawtooth', 60, 200, vol * 1.5, 0.12, now);
+                mSweep('sine', 40, 80, vol * 1.2, 0.15, now);
+                mNoise(vol * 0.3, 0.06, now, 5000);
+                mKick(vol * 2, now);
+            } else {
+                // De-escalating — reverse sweep, tension release
+                mSweep('sine', 300, 80, vol * 0.8, 0.3, now);
+                mOsc('sine', 41.2, vol * 0.6, 0.4, now); // drone swell
+            }
+        }
+        prevMusicLayer = curLayer;
+
+        // ═══════════════════════════════════════════════
+        // LOW-LIFE HEARTBEAT (#2)
+        // When player has ≤2 lives, pulse the drone with a heartbeat
+        // ═══════════════════════════════════════════════
+        const mi2 = myIndex >= 0 ? myIndex : 0;
+        const mep = players[mi2];
+        if (mep && mep.alive && mep.lives <= 2) {
+            const hbVol = vol * (mep.lives === 1 ? 1.2 : 0.7);
+            // Double-beat heartbeat: lub-dub pattern
+            // ~72 BPM heartbeat = every ~0.83s; at 130 BPM each beat = 0.46s
+            // So heartbeat fires roughly every 2 beats
+            if (bi % 2 === 0) {
+                // "lub" — deep thump
+                mSweep('sine', 55, 30, hbVol * 0.5, 0.12, now);
+                // "dub" — slightly higher, delayed
+                mSweep('sine', 70, 35, hbVol * 0.35, 0.1, now + 0.15);
+            }
+        }
+
+        // ═══════════════════════════════════════════════
+        // BASE-ON-FIRE SIREN (#3)
+        // Urgent alarm when player's base is being destroyed
+        // ═══════════════════════════════════════════════
+        const myBaseBurning = baseExps.find(be => be.owner === (myIndex >= 0 ? myIndex : 0) && be.t < be.dur);
+        if (myBaseBurning) {
+            const urgency = myBaseBurning.t / myBaseBurning.dur; // 0→1 as fire progresses
+            const sirenVol = vol * (0.5 + urgency * 0.8);
+            // Rising alarm on even beats, falling on odd
+            if (bi % 2 === 0) {
+                mSweep('square', 400 + urgency * 200, 800 + urgency * 400, sirenVol * 0.08, bl * 0.4, now);
+            } else {
+                mSweep('square', 800 + urgency * 400, 400 + urgency * 200, sirenVol * 0.07, bl * 0.4, now);
+            }
+            // Sub-bass pulse for dread
+            if (bi % 4 === 0) {
+                mSweep('sine', 60, 40, sirenVol * 0.3, bl * 0.8, now);
+            }
+        }
+
         musicBeatIdx++;
     }
 
@@ -4445,11 +4548,12 @@ function startMusic() {
 
 // Kill stinger — brutal impact
 function musicStinger(type) {
-    if (!ac || !musicPlaying || settings.musicVol <= 0) return;
+    if (!ac || settings.musicVol <= 0) return;
     const now = ac.currentTime;
     const vol = settings.musicVol * 0.14;
     try {
         if (type === 'kill') {
+            if (!musicPlaying) return;
             // Doom-style kill riff: dissonant power chord slam + sub drop
             // Root + tritone crash
             const o1 = ac.createOscillator(), g1 = ac.createGain();
@@ -4480,6 +4584,92 @@ function musicStinger(type) {
             g4.gain.setValueAtTime(vol * 0.12, now);
             g4.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
             o4.connect(g4); g4.connect(ac.destination); o4.start(now); o4.stop(now + 0.09);
+        } else if (type === 'victory') {
+            // Triumphant brass fanfare — rising major chord arpeggio
+            const sv = vol * 2.5;
+            // E major chord: E4 → G#4 → B4 → E5
+            const fanfare = [329.63, 415.30, 493.88, 659.25];
+            fanfare.forEach((freq, i) => {
+                const t = now + i * 0.12;
+                const o = ac.createOscillator(), g = ac.createGain();
+                o.type = 'sawtooth'; o.frequency.setValueAtTime(freq, t);
+                g.gain.setValueAtTime(sv * 0.3, t);
+                g.gain.setValueAtTime(sv * 0.3, t + 0.15);
+                g.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+                o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + 0.61);
+                // Octave doubling for richness
+                const o2 = ac.createOscillator(), g2 = ac.createGain();
+                o2.type = 'sine'; o2.frequency.setValueAtTime(freq * 2, t);
+                g2.gain.setValueAtTime(sv * 0.15, t);
+                g2.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+                o2.connect(g2); g2.connect(ac.destination); o2.start(t); o2.stop(t + 0.51);
+            });
+            // Final sustained chord
+            const ct = now + 0.48;
+            [329.63, 415.30, 493.88, 659.25].forEach(freq => {
+                const o = ac.createOscillator(), g = ac.createGain();
+                o.type = 'sawtooth'; o.frequency.setValueAtTime(freq, ct);
+                g.gain.setValueAtTime(sv * 0.2, ct);
+                g.gain.exponentialRampToValueAtTime(0.001, ct + 1.2);
+                o.connect(g); g.connect(ac.destination); o.start(ct); o.stop(ct + 1.21);
+            });
+            // Cymbal crash
+            const on = ac.createOscillator(), gn = ac.createGain();
+            on.type = 'square'; on.frequency.setValueAtTime(6000, ct);
+            gn.gain.setValueAtTime(sv * 0.08, ct);
+            gn.gain.exponentialRampToValueAtTime(0.001, ct + 0.4);
+            on.connect(gn); gn.connect(ac.destination); on.start(ct); on.stop(ct + 0.41);
+        } else if (type === 'defeat') {
+            // Dark descending minor chord — doom and despair
+            const dv = vol * 2;
+            // Descending: E3 → D3 → C3 → B2 (chromatic descent)
+            const descend = [164.81, 146.83, 130.81, 123.47];
+            descend.forEach((freq, i) => {
+                const t = now + i * 0.2;
+                const o = ac.createOscillator(), g = ac.createGain();
+                o.type = 'sawtooth'; o.frequency.setValueAtTime(freq, t);
+                g.gain.setValueAtTime(dv * 0.35, t);
+                g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+                o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + 0.51);
+                // Sub octave
+                const o2 = ac.createOscillator(), g2 = ac.createGain();
+                o2.type = 'sine'; o2.frequency.setValueAtTime(freq * 0.5, t);
+                g2.gain.setValueAtTime(dv * 0.25, t);
+                g2.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
+                o2.connect(g2); g2.connect(ac.destination); o2.start(t); o2.stop(t + 0.61);
+            });
+            // Final low rumble
+            const rt = now + 0.8;
+            const or = ac.createOscillator(), gr = ac.createGain();
+            or.type = 'sawtooth'; or.frequency.setValueAtTime(55, rt);
+            or.frequency.exponentialRampToValueAtTime(27.5, rt + 1);
+            gr.gain.setValueAtTime(dv * 0.4, rt);
+            gr.gain.exponentialRampToValueAtTime(0.001, rt + 1.2);
+            or.connect(gr); gr.connect(ac.destination); or.start(rt); or.stop(rt + 1.21);
+        } else if (type === 'wave') {
+            // Brass hit — short triumphant horn stab for wave start
+            const wv = vol * 2;
+            // Power chord stab: E4 + B4
+            [329.63, 493.88].forEach(freq => {
+                const o = ac.createOscillator(), g = ac.createGain();
+                o.type = 'sawtooth'; o.frequency.setValueAtTime(freq, now);
+                g.gain.setValueAtTime(wv * 0.35, now);
+                g.gain.setValueAtTime(wv * 0.35, now + 0.08);
+                g.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+                o.connect(g); g.connect(ac.destination); o.start(now); o.stop(now + 0.36);
+            });
+            // Sub thump
+            const os = ac.createOscillator(), gs = ac.createGain();
+            os.type = 'sine'; os.frequency.setValueAtTime(82.41, now);
+            gs.gain.setValueAtTime(wv * 0.4, now);
+            gs.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+            os.connect(gs); gs.connect(ac.destination); os.start(now); os.stop(now + 0.26);
+            // Impact noise
+            const on = ac.createOscillator(), gn = ac.createGain();
+            on.type = 'square'; on.frequency.setValueAtTime(4000, now);
+            gn.gain.setValueAtTime(wv * 0.06, now);
+            gn.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+            on.connect(gn); gn.connect(ac.destination); on.start(now); on.stop(now + 0.07);
         }
     } catch(e) {}
 }
@@ -4488,7 +4678,155 @@ function stopMusic() {
     musicPlaying = false;
     combatIntensity = 0;
     combatDecayTimer = 0;
+    prevMusicLayer = 0;
     if (musicInterval) { clearInterval(musicInterval); musicInterval = null; }
+}
+
+// =====================================================
+// MAIN MENU THEME — Medal of Honor / epic orchestral style
+// =====================================================
+let menuThemePlaying = false, menuThemeInterval = null, menuBeatIdx = 0;
+
+// Cinematic theme: slow, majestic, heroic — in E minor with brass/string feel
+// 80 BPM — stately, Medal of Honor opening crawl
+const MENU_BPM = 80;
+const MENU_MELODY = [
+    329.63, 293.66, 329.63, 392.00, 369.99, 329.63, 293.66, 261.63, // E4 D4 E4 G4 F#4 E4 D4 C4
+    329.63, 392.00, 440.00, 493.88, 440.00, 392.00, 329.63, 293.66, // E4 G4 A4 B4 A4 G4 E4 D4
+    261.63, 293.66, 329.63, 392.00, 440.00, 392.00, 329.63, 261.63, // C4 D4 E4 G4 A4 G4 E4 C4
+    246.94, 261.63, 293.66, 329.63, 293.66, 261.63, 246.94, 220.00  // B3 C4 D4 E4 D4 C4 B3 A3
+];
+const MENU_BASS = [
+    82.41, 82.41, 82.41, 82.41, 98.00, 98.00, 82.41, 82.41,   // E2 pedal
+    65.41, 65.41, 73.42, 73.42, 82.41, 82.41, 87.31, 87.31,   // C2 D2 E2 F2
+    55.00, 55.00, 65.41, 65.41, 73.42, 73.42, 82.41, 82.41,   // A1 C2 D2 E2
+    61.74, 61.74, 65.41, 65.41, 73.42, 73.42, 55.00, 55.00    // B1 C2 D2 A1
+];
+
+function startMenuTheme() {
+    if (menuThemePlaying) return;
+    initAudio();
+    if (!ac || settings.musicVol <= 0) return;
+    menuThemePlaying = true;
+    menuBeatIdx = 0;
+    const beatLen = 60 / MENU_BPM;
+
+    function mMenuOsc(type, freq, vol, dur, startT) {
+        try {
+            const o = ac.createOscillator(), g = ac.createGain();
+            o.type = type; o.frequency.setValueAtTime(freq, startT);
+            g.gain.setValueAtTime(Math.min(vol, 0.5), startT);
+            g.gain.exponentialRampToValueAtTime(0.001, startT + dur);
+            o.connect(g); g.connect(ac.destination);
+            o.start(startT); o.stop(startT + dur + 0.01);
+        } catch(e) {}
+    }
+    function mMenuSweep(type, f1, f2, vol, dur, startT) {
+        try {
+            const o = ac.createOscillator(), g = ac.createGain();
+            o.type = type; o.frequency.setValueAtTime(f1, startT);
+            o.frequency.exponentialRampToValueAtTime(f2, startT + dur * 0.8);
+            g.gain.setValueAtTime(Math.min(vol, 0.5), startT);
+            g.gain.exponentialRampToValueAtTime(0.001, startT + dur);
+            o.connect(g); g.connect(ac.destination);
+            o.start(startT); o.stop(startT + dur + 0.01);
+        } catch(e) {}
+    }
+
+    function playMenuBeat() {
+        if (!menuThemePlaying || !ac) return;
+        const now = ac.currentTime;
+        const vol = settings.musicVol * 0.12;
+        const bi = menuBeatIdx;
+        const bl = beatLen;
+
+        // ── DEEP STRING PAD: sustained chord, warm and reverential ──
+        if (bi % 8 === 0) {
+            const root = MENU_BASS[bi % MENU_BASS.length];
+            // Root drone — cello-like sawtooth
+            mMenuOsc('sawtooth', root, vol * 0.2, bl * 7.5, now);
+            mMenuOsc('sawtooth', root * 1.003, vol * 0.15, bl * 7, now); // slight detune for depth
+            // Fifth — viola register
+            mMenuOsc('sawtooth', root * 1.5, vol * 0.1, bl * 6, now);
+            // Octave — violin shimmer
+            mMenuOsc('sine', root * 4, vol * 0.04, bl * 5, now);
+        }
+
+        // ── BRASS MELODY: heroic Medal of Honor theme ──
+        // Play melody note every 2 beats — stately and deliberate
+        if (bi % 2 === 0) {
+            const note = MENU_MELODY[bi % MENU_MELODY.length];
+            // Main brass voice — sawtooth for brass character
+            mMenuOsc('sawtooth', note, vol * 0.18, bl * 1.6, now);
+            // Warm doubling — slightly detuned for chorus effect
+            mMenuOsc('sawtooth', note * 1.002, vol * 0.12, bl * 1.4, now);
+            // Sine undertone for warmth
+            mMenuOsc('sine', note, vol * 0.1, bl * 1.8, now);
+        }
+
+        // ── BRASS HARMONY: counter-melody thirds/fifths ──
+        if (bi % 4 === 2) {
+            const note = MENU_MELODY[bi % MENU_MELODY.length];
+            // Harmony a third above
+            mMenuOsc('sawtooth', note * 1.25, vol * 0.08, bl * 1.2, now);
+            mMenuOsc('sine', note * 1.25, vol * 0.05, bl * 1.4, now);
+        }
+
+        // ── TIMPANI: slow, majestic rolls on downbeats ──
+        if (bi % 8 === 0) {
+            mMenuSweep('sine', 80, 45, vol * 0.35, 0.25, now);
+            mMenuOsc('triangle', 50, vol * 0.15, 0.2, now + 0.02);
+        }
+        // Secondary timpani hit on beat 5
+        if (bi % 8 === 4) {
+            mMenuSweep('sine', 70, 40, vol * 0.2, 0.2, now);
+        }
+
+        // ── SNARE ROLL: military-style on phrases ──
+        if (bi % 16 === 14 || bi % 16 === 15) {
+            // Gentle snare roll leading to phrase ending
+            for (let r = 0; r < 4; r++) {
+                const rt = now + r * bl * 0.25;
+                const rn = ac.createOscillator(), rg = ac.createGain();
+                try {
+                    rn.type = 'square'; rn.frequency.setValueAtTime(5000 + Math.random() * 3000, rt);
+                    rg.gain.setValueAtTime(vol * 0.03, rt);
+                    rg.gain.exponentialRampToValueAtTime(0.001, rt + 0.04);
+                    rn.connect(rg); rg.connect(ac.destination); rn.start(rt); rn.stop(rt + 0.05);
+                } catch(e) {}
+            }
+        }
+
+        // ── CYMBAL SWELL: every 16 beats for grandeur ──
+        if (bi % 16 === 0 && bi > 0) {
+            const cn = ac.createOscillator(), cg = ac.createGain();
+            try {
+                cn.type = 'square'; cn.frequency.setValueAtTime(8000, now);
+                cg.gain.setValueAtTime(0.001, now);
+                cg.gain.linearRampToValueAtTime(vol * 0.06, now + 0.3);
+                cg.gain.exponentialRampToValueAtTime(0.001, now + 0.8);
+                cn.connect(cg); cg.connect(ac.destination); cn.start(now); cn.stop(now + 0.81);
+            } catch(e) {}
+        }
+
+        // ── HORN SUSTAIN: long heroic notes on phrase starts ──
+        if (bi % 16 === 0) {
+            const note = MENU_MELODY[bi % MENU_MELODY.length];
+            // French horn — deep, warm, sustained
+            mMenuOsc('sawtooth', note * 0.5, vol * 0.12, bl * 4, now);
+            mMenuOsc('sine', note * 0.5, vol * 0.08, bl * 4.5, now);
+        }
+
+        menuBeatIdx++;
+    }
+
+    menuThemeInterval = setInterval(playMenuBeat, beatLen * 1000);
+    playMenuBeat();
+}
+
+function stopMenuTheme() {
+    menuThemePlaying = false;
+    if (menuThemeInterval) { clearInterval(menuThemeInterval); menuThemeInterval = null; }
 }
 
 function updateMusicVolume() {
