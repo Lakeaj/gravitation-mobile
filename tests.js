@@ -6430,7 +6430,7 @@ section('223. Special Weapon Shield Damage (shieldDmg)');
     assert(code.includes('b.shieldDmg'), 'client passes bullet shieldDmg at hit site');
     // Laser beams pass shieldDmg=2 directly
     assert(code.includes('bm.owner, 2)'), 'client beam hit passes shieldDmg=2');
-    assert(sCode.includes('false, 2)'), 'server beam hit passes shieldDmg=2');
+    assert(sCode.includes('false, 2, bm.owner)'), 'server beam hit passes shieldDmg=2 and killerIdx');
 }
 
 // =====================================================
@@ -6654,6 +6654,166 @@ section('233. Rematch — Countdown Timer Tracked on Room');
     const startIdx = startMatch ? startMatch.index : -1;
     const startBody = startIdx >= 0 ? code.substring(startIdx, startIdx + 400) : '';
     assert(startBody.includes('clearInterval(this.countdownTimer)'), 'startGame clears existing countdown first');
+}
+
+// ═══════════════════════════════════════════════════════════════
+section('234. Kill Effect Transmission — Server killPlayer Includes ki & ke');
+// ═══════════════════════════════════════════════════════════════
+{
+    // Regression: server killPlayer was missing killerIdx parameter and not sending
+    // ki/ke in kill events — everyone saw default explosion regardless of killer's chosen effect
+
+    const srvCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+
+    // Server killPlayer must accept killerIdx parameter
+    assert(srvCode.includes('killPlayer(p, force, shieldDmg, killerIdx)'),
+        'Server killPlayer signature includes killerIdx parameter');
+
+    // Server kill event must include ki (killer index) and ke (kill effect)
+    assert(srvCode.includes("ki: ki, ke: ke"), 'Server kill event includes ki and ke fields');
+
+    // Server must look up killer's killEffect from players array
+    assert(srvCode.includes('this.players[ki].killEffect'),
+        'Server looks up killEffect from killer player object');
+
+    // Server defaults to "default" when no killer (terrain/self-kill)
+    assert(srvCode.includes("'default') : 'default'"),
+        'Server defaults kill effect to default when no killer');
+}
+
+// ═══════════════════════════════════════════════════════════════
+section('235. Kill Effect Transmission — All Kill Sources Pass killerIdx');
+// ═══════════════════════════════════════════════════════════════
+{
+    // Regression: call sites were not passing killer index to killPlayer
+
+    const srvCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+
+    // Bullet kill passes b.owner as killerIdx
+    assert(srvCode.includes('this.killPlayer(p, false, b.shieldDmg, b.owner)'),
+        'Bullet kill passes b.owner as killerIdx');
+
+    // Beam kill passes bm.owner as killerIdx
+    assert(srvCode.includes('this.killPlayer(pl, false, 2, bm.owner)'),
+        'Beam kill passes bm.owner as killerIdx');
+
+    // Ship collision passes both player indices
+    assert(srvCode.includes('this.killPlayer(p, false, undefined, oi)'),
+        'Ship collision passes opponent index as killerIdx for first player');
+    assert(srvCode.includes('this.killPlayer(op, false, undefined, pi)'),
+        'Ship collision passes player index as killerIdx for opponent');
+
+    // Terrain kill has no killer (no killerIdx argument)
+    const terrainKill = srvCode.match(/else this\.killPlayer\(p\)/);
+    assert(terrainKill, 'Terrain kill calls killPlayer without killerIdx (defaults to -1)');
+
+    // Base kamikaze has no killer (force=true)
+    const baseKill = srvCode.match(/this\.killPlayer\(p, true\)/);
+    assert(baseKill, 'Base kamikaze calls killPlayer with force=true, no killerIdx');
+}
+
+// ═══════════════════════════════════════════════════════════════
+section('236. Kill Effect Transmission — Player Object Has killEffect');
+// ═══════════════════════════════════════════════════════════════
+{
+    // Regression: server game players must store killEffect for lookup during kills
+
+    const srvCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+
+    // Server beginGame must copy killEffect from lobbyPlayers to game players
+    assert(srvCode.includes("killEffect: this.lobbyPlayers[i].killEffect || 'default'"),
+        'Server copies killEffect from lobby to game player');
+
+    // Client also copies killEffect to player objects at game start
+    const clientCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    assert(clientCode.includes("killEffect: isLocal ? shopData.activeKillEffect : (data.players[i].killEffect || 'default')"),
+        'Client sets killEffect on player objects from start data');
+}
+
+// ═══════════════════════════════════════════════════════════════
+section('237. Kill Effect Transmission — Full Flow Simulation');
+// ═══════════════════════════════════════════════════════════════
+{
+    // Simulate the complete server kill flow to verify correct effect is produced
+
+    function mkGamePlayer(id, killEffect) {
+        return {
+            id, x: 100 + id * 200, y: 200, alive: true, lives: 3, invT: 0,
+            vx: 0, vy: 0, landed: false, shield: 0, shieldHP: 0,
+            weapon: 'normal', weaponTimer: 0, flashTimer: 0,
+            color: '#00ccff', name: 'P' + id, respawnT: 0, angle: 0,
+            killEffect: killEffect || 'default',
+            streak: 0, lastKillFrame: -999,
+            perkBonuses: {}
+        };
+    }
+
+    const gamePlayers = [
+        mkGamePlayer(0, 'nova'),
+        mkGamePlayer(1, 'vortex'),
+        mkGamePlayer(2, 'electric'),
+        mkGamePlayer(3) // default — no extra effect
+    ];
+
+    // Simulate server killPlayer logic for each scenario
+    function simulateKillEvent(players, victimIdx, killerIdx) {
+        const p = players[victimIdx];
+        const ki = (killerIdx !== undefined && killerIdx >= 0) ? killerIdx : -1;
+        const ke = (ki >= 0 && players[ki]) ? (players[ki].killEffect || 'default') : 'default';
+        return { t: 'e', n: 'kill', i: p.id, x: p.x, y: p.y, ki: ki, ke: ke };
+    }
+
+    // P0 (nova) kills P1 → P1 dies with nova effect
+    const evt1 = simulateKillEvent(gamePlayers, 1, 0);
+    assert(evt1.ke === 'nova', 'When nova-user kills someone, kill event has ke=nova');
+    assert(evt1.ki === 0, 'Kill event includes killer index');
+    assert(evt1.i === 1, 'Kill event includes victim id');
+
+    // P1 (vortex) kills P0 → P0 dies with vortex effect
+    const evt2 = simulateKillEvent(gamePlayers, 0, 1);
+    assert(evt2.ke === 'vortex', 'When vortex-user kills someone, kill event has ke=vortex');
+
+    // P2 (electric) kills P3 → P3 dies with electric effect
+    const evt3 = simulateKillEvent(gamePlayers, 3, 2);
+    assert(evt3.ke === 'electric', 'When electric-user kills someone, kill event has ke=electric');
+
+    // P3 (default) kills P2 → P2 dies with default effect
+    const evt4 = simulateKillEvent(gamePlayers, 2, 3);
+    assert(evt4.ke === 'default', 'When default-user kills someone, kill event has ke=default');
+
+    // Terrain kill (no killer) → always default
+    const evt5 = simulateKillEvent(gamePlayers, 0, undefined);
+    assert(evt5.ke === 'default', 'Terrain kill uses default effect');
+    assert(evt5.ki === -1, 'Terrain kill has ki=-1');
+
+    // Self-destruct / base kamikaze (no killer)
+    const evt6 = simulateKillEvent(gamePlayers, 2, -1);
+    assert(evt6.ke === 'default', 'Base kamikaze uses default effect');
+
+    // Invalid killer index → default
+    const evt7 = simulateKillEvent(gamePlayers, 1, 99);
+    assert(evt7.ke === 'default', 'Invalid killer index falls back to default effect');
+}
+
+// ═══════════════════════════════════════════════════════════════
+section('238. Kill Effect — Client killPlayer Mirrors Server Logic');
+// ═══════════════════════════════════════════════════════════════
+{
+    const clientCode = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    // Client killPlayer must accept killerIdx
+    assert(clientCode.includes('function killPlayer(p, force, killerIdx'),
+        'Client killPlayer accepts killerIdx parameter');
+
+    // Client computes ki and ke the same way as server
+    assert(clientCode.includes("const ki = (killerIdx !== undefined && killerIdx >= 0) ? killerIdx : -1;"),
+        'Client computes ki from killerIdx same as server');
+    assert(clientCode.includes("const ke = (ki >= 0 && players[ki]) ? (players[ki].killEffect || 'default') : 'default';"),
+        'Client computes ke from killer\'s killEffect same as server');
+
+    // Client emits ki and ke in kill event
+    assert(clientCode.includes("ki:ki,ke:ke") || clientCode.includes("ki: ki, ke: ke"),
+        'Client kill event includes ki and ke fields');
 }
 
 console.log(`\n${'='.repeat(50)}`);
