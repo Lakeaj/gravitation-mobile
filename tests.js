@@ -6433,6 +6433,86 @@ section('223. Special Weapon Shield Damage (shieldDmg)');
     assert(sCode.includes('false, 2)'), 'server beam hit passes shieldDmg=2');
 }
 
+// =====================================================
+section('224. Public Join Sends Cosmetics & Perks');
+// =====================================================
+{
+    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    // Find joinPublicRoom function
+    const joinPubMatch = code.match(/function joinPublicRoom[\s\S]*?ws\.send\(JSON\.stringify\(([^)]+)\)\)/);
+    assert(joinPubMatch, 'joinPublicRoom function exists with ws.send');
+    const sendBody = joinPubMatch[1];
+    assert(sendBody.includes('skin'), 'public join sends skin');
+    assert(sendBody.includes('trail'), 'public join sends trail');
+    assert(sendBody.includes('engineSound'), 'public join sends engineSound');
+    assert(sendBody.includes('killEffect'), 'public join sends killEffect');
+    assert(sendBody.includes('perks'), 'public join sends perks');
+
+    // Verify private join (doJoin) also sends cosmetics
+    const doJoinMatch = code.match(/function doJoin[\s\S]*?ws\.send\(JSON\.stringify\(([^)]+)\)\)/);
+    assert(doJoinMatch, 'doJoin function exists with ws.send');
+    const joinBody = doJoinMatch[1];
+    assert(joinBody.includes('skin'), 'private join sends skin');
+    assert(joinBody.includes('trail'), 'private join sends trail');
+    assert(joinBody.includes('killEffect'), 'private join sends killEffect');
+    assert(joinBody.includes('perks'), 'private join sends perks');
+
+    // Verify create also sends cosmetics
+    const createMatch = code.match(/t:\s*'create'[^}]+/);
+    assert(createMatch, 'create message found');
+    assert(createMatch[0].includes('skin'), 'create sends skin');
+    assert(createMatch[0].includes('trail'), 'create sends trail');
+    assert(createMatch[0].includes('killEffect'), 'create sends killEffect');
+}
+
+// =====================================================
+section('225. Server broadcastLobby Includes Cosmetics');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // broadcastLobby should include cosmetic fields in lobbyData map
+    const lobbyMatch = sCode.match(/broadcastLobby[\s\S]*?lobbyPlayers\.map\(p\s*=>\s*\(([^)]+)\)/);
+    assert(lobbyMatch, 'broadcastLobby with lobbyPlayers.map found');
+    const mapBody = lobbyMatch[1];
+    assert(mapBody.includes('skin'), 'lobby broadcast includes skin');
+    assert(mapBody.includes('trail'), 'lobby broadcast includes trail');
+    assert(mapBody.includes('killEffect'), 'lobby broadcast includes killEffect');
+    assert(mapBody.includes('name'), 'lobby broadcast includes name');
+    assert(mapBody.includes('color'), 'lobby broadcast includes color');
+    assert(mapBody.includes('ready'), 'lobby broadcast includes ready');
+}
+
+// =====================================================
+section('226. Server Start Message Includes Cosmetics');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // The 'start' message sent to clients should include cosmetic fields
+    const startMatch = sCode.match(/t:\s*'start'[\s\S]*?lobbyPlayers\.map\(p\s*=>\s*\(([^)]+)\)/);
+    assert(startMatch, 'start message with player map found');
+    const body = startMatch[1];
+    assert(body.includes('skin'), 'start message includes skin');
+    assert(body.includes('trail'), 'start message includes trail');
+    assert(body.includes('engineSound'), 'start message includes engineSound');
+    assert(body.includes('killEffect'), 'start message includes killEffect');
+}
+
+// =====================================================
+section('227. Server Stores Cosmetics on Join');
+// =====================================================
+{
+    const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
+    // Server should store cosmetics from join/create messages onto lobbyPlayers
+    assert(sCode.includes('data.skin') && sCode.includes('.skin ='), 'server stores skin from join data');
+    assert(sCode.includes('data.trail') && sCode.includes('.trail ='), 'server stores trail from join data');
+    assert(sCode.includes('data.engineSound') && sCode.includes('.engineSound ='), 'server stores engineSound from join data');
+    assert(sCode.includes('data.killEffect') && sCode.includes('.killEffect ='), 'server stores killEffect from join data');
+    // Default values in lobbyPlayer init
+    assert(sCode.includes("skin: 'default'"), 'lobbyPlayer defaults skin to default');
+    assert(sCode.includes("trail: 'default'"), 'lobbyPlayer defaults trail to default');
+    assert(sCode.includes("killEffect: 'default'"), 'lobbyPlayer defaults killEffect to default');
+}
+
 console.log(`\n${'='.repeat(50)}`);
 console.log(`RESULTS: ${passed}/${total} passed, ${failed} failed`);
 console.log(`${'='.repeat(50)}`);
