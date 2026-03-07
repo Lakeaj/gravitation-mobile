@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "test": "node tests.js",
+    "build": "echo 'No build step required'",
     "build:mobile": "node build-mobile.js",
     "cap:sync": "npm run build:mobile && npx cap sync"
   },
