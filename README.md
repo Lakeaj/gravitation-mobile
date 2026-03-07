@@ -336,7 +336,7 @@ git commit --allow-empty -m "Trigger Render redeploy" && git push
 4. Commit and push: `git add -A && git commit -m "description" && git push`
 5. Render auto-deploys from `main` branch
 
-The workspace is at: `C:\Users\ljack\Lakes_Games\Gravitation Mobile`
+The workspace is at: `C:\Users\ljack\Lakes_Games\Thrustfall`
 
 ---
 

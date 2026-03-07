@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Gravitation Mobile</title>
+<title>Thrustfall</title>
 <!-- Dedicated server mode — no third-party dependencies needed -->
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
@@ -40,8 +40,8 @@ input[type=text]::placeholder{color:#555;text-transform:none}
 
 <!-- MAIN MENU -->
 <div class="overlay active" id="menuScreen">
-<h1>GRAVITATION</h1>
-<div class="sub">A Net Yaroze tribute</div>
+<h1>THRUSTFALL</h1>
+<div class="sub">Cave combat &bull; Online multiplayer</div>
 <button class="btn" style="background:linear-gradient(180deg,#441100,#220000);border-color:#ff3300;color:#ff6600;font-size:clamp(1rem,3.5vw,1.4rem);padding:.8em 2em" onclick="showSurvival()">⚔ SURVIVAL</button>
 <button class="btn" onclick="showMultiplayer()">MULTIPLAYER</button>
 <button class="btn" style="opacity:.7;border-color:#555;color:#999" onclick="showSolo()">PRACTICE</button>
@@ -55,7 +55,7 @@ input[type=text]::placeholder{color:#555;text-transform:none}
 </div>
 <div class="info-footer" style="margin-top:1.4em">
 <span style="color:#555">v2.1 &bull; Lakes Games &bull; 2026</span><br>
-<span style="color:#444">A love letter to Gravitation by James Shaughnessy (Net Yaroze, 1998)</span><br>
+<span style="color:#444">A gravity-defying cave combat game</span><br>
 <span style="color:#444">Made with love by Keyo &amp; Tom</span>
 </div>
 </div>
@@ -234,7 +234,7 @@ Land on bases to refuel · Collect weapons · Survive!
 
 <script>
 // =====================================================
-// GRAVITATION MOBILE — Networked Multiplayer
+// THRUSTFALL — Networked Multiplayer
 // WebSocket dedicated server, client-side prediction + interpolation
 // =====================================================
 const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');

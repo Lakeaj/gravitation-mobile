@@ -1,5 +1,5 @@
 // =====================================================
-// GRAVITATION MOBILE — Gameplay Regression Tests v2.1
+// THRUSTFALL — Gameplay Regression Tests v2.1
 // Run: node tests.js
 // =====================================================
 // These tests extract and replicate the core game logic
