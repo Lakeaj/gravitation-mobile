@@ -233,10 +233,18 @@ Land on bases to refuel · Collect weapons · Survive!
 <!-- PREMIUM COSMETIC SHOP -->
 <div class="overlay" id="cosmeticShopScreen">
 <h2>🎨 COSMETICS</h2>
-<div id="coinDisplay" style="color:#ffcc00;font-size:clamp(.8rem,2.5vw,1rem);margin:.3em 0;text-align:center"></div>
-<div id="cosmeticAccordion" style="width:min(370px,92vw);margin:.5em auto;max-height:65vh;overflow-y:auto"></div>
-<div class="sub" style="margin-top:.4em;color:#555">Cosmetics are visual only — no gameplay advantage</div>
-<button class="btn sm" onclick="stopShopPreview();showMenu()">BACK</button>
+<div id="coinDisplay" style="color:#ffcc00;font-size:clamp(.8rem,2.5vw,1rem);margin:.2em 0;text-align:center"></div>
+<canvas id="shopPreviewCanvas" width="280" height="200" style="width:min(280px,80vw);height:auto;aspect-ratio:280/200;display:block;margin:.3em auto;border-radius:10px;border:1px solid #333;background:#0a0012"></canvas>
+<div id="shopPreviewLabel" style="color:#aaa;font-size:clamp(.65rem,2vw,.8rem);text-align:center;margin:.2em 0;min-height:1.4em"></div>
+<div id="shopCategoryTabs" style="display:flex;gap:.3em;margin:.3em auto;justify-content:center;flex-wrap:wrap">
+<button class="btn sm" id="shopTab_skins" onclick="selectShopCategory('skins')" style="font-size:clamp(.6rem,1.8vw,.75rem);padding:.35em .7em">🚀 SHIPS</button>
+<button class="btn sm" id="shopTab_trails" onclick="selectShopCategory('trails')" style="font-size:clamp(.6rem,1.8vw,.75rem);padding:.35em .7em">🔥 TRAILS</button>
+<button class="btn sm" id="shopTab_engines" onclick="selectShopCategory('engines')" style="font-size:clamp(.6rem,1.8vw,.75rem);padding:.35em .7em">🔊 ENGINES</button>
+<button class="btn sm" id="shopTab_killfx" onclick="selectShopCategory('killfx')" style="font-size:clamp(.6rem,1.8vw,.75rem);padding:.35em .7em">💥 KILLS</button>
+</div>
+<div id="cosmeticList" style="width:min(360px,92vw);margin:.3em auto;max-height:32vh;overflow-y:auto"></div>
+<div class="sub" style="margin-top:.3em;color:#555;font-size:clamp(.45rem,1.3vw,.6rem)">Cosmetics are visual only — no gameplay advantage</div>
+<button class="btn sm" onclick="stopShopPreview();showMenu()" style="margin-top:.3em">BACK</button>
 </div>
 
 <canvas id="c"></canvas>
@@ -3599,26 +3607,38 @@ function unequipPerk(id) {
 // COSMETIC SHOP (Premium — mock payments)
 // =====================================================
 let cosmeticTab = 'skins';
-let shopPreviewAF = null; // animation frame for shop preview
-let shopPreviewSkinId = null; // which skin is being previewed (hover/tap or active)
+let shopPreviewAF = null;
+let shopPreviewItemId = null; // which item is being previewed
+let shopPreviewParticles = []; // particles for animated previews
+let shopPreviewT = 0; // animation time counter
 
 function showCosmeticShop() {
     showScreen('cosmeticShopScreen');
-    shopPreviewSkinId = null;
-    renderCosmeticShop();
+    selectShopCategory('skins');
 }
-function showCosmeticTab(tab) {
-    // Toggle accordion section
-    const section = document.getElementById('shopSection_' + tab);
-    if (section) {
-        const content = section.querySelector('.shop-section-content');
-        const arrow = section.querySelector('.shop-arrow');
-        if (content.style.display === 'none') {
-            content.style.display = 'block'; arrow.textContent = '▼';
-        } else {
-            content.style.display = 'none'; arrow.textContent = '►';
+
+function selectShopCategory(tab) {
+    cosmeticTab = tab;
+    // Highlight active tab
+    ['skins','trails','engines','killfx'].forEach(t => {
+        const btn = document.getElementById('shopTab_' + t);
+        if (btn) {
+            btn.style.borderColor = t === tab ? '#ffcc00' : '';
+            btn.style.color = t === tab ? '#ffcc00' : '';
         }
-    }
+    });
+    // Select the currently equipped item by default
+    const cat = getShopCategory(tab);
+    shopPreviewItemId = cat.active;
+    renderCosmeticShop();
+    startShopPreview();
+}
+
+function getShopCategory(tab) {
+    if (tab === 'skins')   return { items: SHIP_SKINS,    owned: shopData.ownedSkins,       active: shopData.activeSkin };
+    if (tab === 'trails')  return { items: TRAIL_EFFECTS, owned: shopData.ownedTrails,      active: shopData.activeTrail };
+    if (tab === 'engines') return { items: ENGINE_SOUNDS, owned: shopData.ownedEngines,     active: shopData.activeEngine };
+    return                        { items: KILL_EFFECTS,  owned: shopData.ownedKillEffects, active: shopData.activeKillEffect };
 }
 
 function stopShopPreview() {
@@ -3626,149 +3646,335 @@ function stopShopPreview() {
 }
 
 function startShopPreview() {
-    // No longer needed — shop uses accordion layout with inline previews
+    stopShopPreview();
+    shopPreviewParticles = [];
+    shopPreviewT = 0;
+    const cv = document.getElementById('shopPreviewCanvas');
+    if (!cv) return;
+    const c = cv.getContext('2d');
+    const W = cv.width, H = cv.height;
+
+    function loop() {
+        shopPreviewT++;
+        c.fillStyle = '#0a0012';
+        c.fillRect(0, 0, W, H);
+
+        const cat = getShopCategory(cosmeticTab);
+        const item = cat.items.find(i => i.id === shopPreviewItemId) || cat.items[0];
+        if (!item) { shopPreviewAF = requestAnimationFrame(loop); return; }
+
+        if (cosmeticTab === 'skins') drawSkinPreview(c, W, H, item);
+        else if (cosmeticTab === 'trails') drawTrailPreview(c, W, H, item);
+        else if (cosmeticTab === 'engines') drawEnginePreview(c, W, H, item);
+        else drawKillPreview(c, W, H, item);
+
+        shopPreviewAF = requestAnimationFrame(loop);
+    }
+    shopPreviewAF = requestAnimationFrame(loop);
 }
+
+function drawSkinPreview(c, W, H, item) {
+    const cx = W / 2, cy = H / 2 - 8;
+    const bob = Math.sin(shopPreviewT * 0.04) * 4;
+    const sz = 32;
+    const sColor = item.color || '#00ccff';
+
+    // Glow behind ship
+    c.save();
+    c.shadowColor = sColor;
+    c.shadowBlur = 25;
+    c.fillStyle = sColor;
+    c.globalAlpha = 0.15;
+    c.beginPath(); c.arc(cx, cy + bob, sz * 1.2, 0, Math.PI * 2); c.fill();
+    c.restore();
+
+    // Engine flame
+    c.save(); c.translate(cx, cy + bob);
+    const fLen = 14 + Math.sin(shopPreviewT * 0.15) * 6 + Math.random() * 4;
+    const trailItem = TRAIL_EFFECTS.find(t => t.id === shopData.activeTrail) || TRAIL_EFFECTS[0];
+    const fColors = trailItem.rainbow ? ['#ff0000','#ffaa00','#00ff00','#0088ff','#aa00ff'] : (trailItem.colors || ['#ff8800','#ffcc00']);
+    const fColor = fColors[Math.floor(shopPreviewT * 0.1) % fColors.length];
+    c.fillStyle = fColor;
+    c.globalAlpha = 0.7;
+    c.beginPath(); c.moveTo(-6, sz * 0.5); c.lineTo(0, sz * 0.5 + fLen); c.lineTo(6, sz * 0.5); c.closePath(); c.fill();
+    c.fillStyle = '#fff'; c.globalAlpha = 0.3;
+    c.beginPath(); c.moveTo(-2, sz * 0.5); c.lineTo(0, sz * 0.5 + fLen * 0.5); c.lineTo(2, sz * 0.5); c.closePath(); c.fill();
+    c.restore();
+
+    // Ship body
+    c.save(); c.translate(cx, cy + bob);
+    if (item.id === 'neon') { c.shadowColor = sColor; c.shadowBlur = 12; }
+    if (item.id === 'ghost') { c.globalAlpha = 0.6; }
+    c.fillStyle = sColor;
+    c.beginPath(); drawShipShape(c, item.id, sz); c.fill();
+    c.strokeStyle = item.id === 'gold' ? '#ffee88' : 'rgba(255,255,255,0.5)';
+    c.lineWidth = 1.2; c.stroke();
+    // Cockpit
+    c.fillStyle = '#fff';
+    c.beginPath(); c.arc(0, -sz * 0.2, sz * 0.2, 0, Math.PI * 2); c.fill();
+    c.shadowBlur = 0; c.globalAlpha = 1;
+    c.restore();
+}
+
+function drawTrailPreview(c, W, H, item) {
+    const cx = W / 2, cy = 55;
+    const sz = 22;
+
+    // Spawn particles
+    if (shopPreviewT % 2 === 0) {
+        const cols = item.rainbow ? ['#ff0000','#ff8800','#ffff00','#00ff44','#0088ff','#8800ff'] : (item.colors || ['#ff8800','#ffcc00']);
+        shopPreviewParticles.push({
+            x: cx + (Math.random() - 0.5) * 6,
+            y: cy + sz * 0.5 + 3,
+            vx: (Math.random() - 0.5) * 0.5,
+            vy: 1.2 + Math.random() * 0.6,
+            life: 1,
+            color: cols[Math.floor(Math.random() * cols.length)],
+            sz: 2 + Math.random() * 2.5
+        });
+    }
+
+    // Update & draw particles
+    for (let i = shopPreviewParticles.length - 1; i >= 0; i--) {
+        const p = shopPreviewParticles[i];
+        p.x += p.vx; p.y += p.vy; p.life -= 0.012;
+        if (p.life <= 0 || p.y > H - 5) { shopPreviewParticles.splice(i, 1); continue; }
+        c.globalAlpha = p.life * 0.8;
+        c.fillStyle = p.color;
+        c.beginPath(); c.arc(p.x, p.y, p.sz * p.life, 0, Math.PI * 2); c.fill();
+    }
+    c.globalAlpha = 1;
+
+    // Ship on top
+    c.save(); c.translate(cx, cy);
+    const skinItem = SHIP_SKINS.find(s => s.id === shopData.activeSkin) || SHIP_SKINS[0];
+    c.fillStyle = skinItem.color || '#00ccff';
+    c.beginPath(); drawShipShape(c, skinItem.id, sz); c.fill();
+    c.strokeStyle = 'rgba(255,255,255,0.4)'; c.lineWidth = 0.8; c.stroke();
+    c.fillStyle = '#fff'; c.beginPath(); c.arc(0, -sz * 0.2, sz * 0.15, 0, Math.PI * 2); c.fill();
+    c.restore();
+}
+
+function drawEnginePreview(c, W, H, item) {
+    const cx = W / 2, cy = H / 2 - 10;
+    const sz = 26;
+    const bob = Math.sin(shopPreviewT * 0.04) * 3;
+
+    // Sound wave rings
+    const eColor = item.id === 'default' ? '#ff8800' : item.id === 'rumble' ? '#ff4400' : item.id === 'whine' ? '#88ddff' : item.id === 'pulse' ? '#44ff88' : item.id === 'roar' ? '#ff6600' : '#aaddff';
+    for (let i = 0; i < 3; i++) {
+        const phase = ((shopPreviewT * 0.03 + i * 0.33) % 1);
+        c.globalAlpha = (1 - phase) * 0.3;
+        c.strokeStyle = eColor;
+        c.lineWidth = 2;
+        c.beginPath();
+        c.arc(cx, cy + bob + sz * 0.6, 12 + phase * 45, 0, Math.PI * 2);
+        c.stroke();
+    }
+    c.globalAlpha = 1;
+
+    // Engine flame with pulsing
+    c.save(); c.translate(cx, cy + bob);
+    const fLen = 16 + Math.sin(shopPreviewT * 0.12) * 8 + Math.random() * 3;
+    c.fillStyle = eColor; c.globalAlpha = 0.65;
+    c.beginPath(); c.moveTo(-7, sz * 0.5); c.lineTo(0, sz * 0.5 + fLen); c.lineTo(7, sz * 0.5); c.closePath(); c.fill();
+    c.restore();
+
+    // Ship
+    c.save(); c.translate(cx, cy + bob);
+    const skinItem = SHIP_SKINS.find(s => s.id === shopData.activeSkin) || SHIP_SKINS[0];
+    c.fillStyle = skinItem.color || '#00ccff';
+    c.beginPath(); drawShipShape(c, skinItem.id, sz); c.fill();
+    c.strokeStyle = 'rgba(255,255,255,0.4)'; c.lineWidth = 0.8; c.stroke();
+    c.fillStyle = '#fff'; c.beginPath(); c.arc(0, -sz * 0.2, sz * 0.15, 0, Math.PI * 2); c.fill();
+    c.restore();
+
+    // Tap to hear label
+    c.fillStyle = '#666'; c.font = '10px monospace'; c.textAlign = 'center';
+    c.fillText('TAP PREVIEW TO HEAR', cx, H - 12);
+}
+
+function drawKillPreview(c, W, H, item) {
+    const cx = W / 2, cy = H / 2;
+    const kColor = item.color || '#ff4400';
+    const cycle = (shopPreviewT % 120) / 120; // loops every 2 seconds
+
+    if (item.id === 'vortex') {
+        // Spiraling inward vortex
+        for (let i = 0; i < 8; i++) {
+            const a = (i / 8) * Math.PI * 2 + shopPreviewT * 0.06;
+            const r = 45 * (1 - cycle) * (0.5 + Math.sin(a * 3) * 0.2);
+            c.globalAlpha = (1 - cycle) * 0.7;
+            c.fillStyle = kColor;
+            c.beginPath(); c.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, 3 + (1 - cycle) * 4, 0, Math.PI * 2); c.fill();
+        }
+    } else if (item.id === 'electric') {
+        // Lightning bolts from center
+        for (let i = 0; i < 6; i++) {
+            const a = (i / 6) * Math.PI * 2 + shopPreviewT * 0.02;
+            c.strokeStyle = kColor; c.lineWidth = 1.5;
+            c.globalAlpha = (1 - cycle) * 0.8;
+            c.beginPath(); c.moveTo(cx, cy);
+            let px = cx, py = cy;
+            for (let j = 0; j < 4; j++) {
+                px += Math.cos(a) * 12 + (Math.random() - 0.5) * 8;
+                py += Math.sin(a) * 12 + (Math.random() - 0.5) * 8;
+                c.lineTo(px, py);
+            }
+            c.stroke();
+        }
+    } else if (item.id === 'shatter') {
+        // Glass shards flying outward
+        for (let i = 0; i < 10; i++) {
+            const a = (i / 10) * Math.PI * 2 + i * 0.5;
+            const r = cycle * 50;
+            c.globalAlpha = (1 - cycle) * 0.7;
+            c.fillStyle = kColor;
+            c.save(); c.translate(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+            c.rotate(a + shopPreviewT * 0.05);
+            c.fillRect(-3, -1.5, 6, 3);
+            c.restore();
+        }
+    } else if (item.id === 'nova') {
+        // Expanding ring
+        c.globalAlpha = (1 - cycle) * 0.6;
+        c.strokeStyle = kColor; c.lineWidth = 3 * (1 - cycle);
+        c.beginPath(); c.arc(cx, cy, cycle * 55, 0, Math.PI * 2); c.stroke();
+        c.strokeStyle = '#fff'; c.lineWidth = 1;
+        c.beginPath(); c.arc(cx, cy, cycle * 40, 0, Math.PI * 2); c.stroke();
+        // Center flash
+        if (cycle < 0.2) {
+            c.globalAlpha = (0.2 - cycle) * 3;
+            c.fillStyle = '#fff';
+            c.beginPath(); c.arc(cx, cy, 8 * (1 - cycle * 5), 0, Math.PI * 2); c.fill();
+        }
+    } else if (item.id === 'void') {
+        // Dark matter pulling inward
+        for (let i = 0; i < 12; i++) {
+            const a = (i / 12) * Math.PI * 2 + shopPreviewT * 0.03;
+            const r = 50 * (1 - cycle);
+            c.globalAlpha = cycle * 0.6;
+            c.fillStyle = kColor;
+            c.beginPath(); c.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, 2, 0, Math.PI * 2); c.fill();
+        }
+        // Central dark spot
+        c.globalAlpha = cycle * 0.5;
+        c.fillStyle = '#110022';
+        c.beginPath(); c.arc(cx, cy, 8 + cycle * 10, 0, Math.PI * 2); c.fill();
+    } else {
+        // Default explosion — expanding particles
+        for (let i = 0; i < 8; i++) {
+            const a = (i / 8) * Math.PI * 2;
+            const r = cycle * 45;
+            c.globalAlpha = (1 - cycle) * 0.8;
+            c.fillStyle = i % 2 === 0 ? '#ff4400' : '#ffaa00';
+            c.beginPath(); c.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, 3 * (1 - cycle), 0, Math.PI * 2); c.fill();
+        }
+        if (cycle < 0.3) {
+            c.globalAlpha = (0.3 - cycle) * 2;
+            c.fillStyle = '#ff8800';
+            c.beginPath(); c.arc(cx, cy, 12 * (1 - cycle * 3), 0, Math.PI * 2); c.fill();
+        }
+    }
+    c.globalAlpha = 1;
+}
+
 function renderCosmeticShop() {
     document.getElementById('coinDisplay').innerHTML = '💰 Balance: <span style="color:#ffcc00">$' + (shopData.coins / 100).toFixed(2) + '</span>';
-    const container = document.getElementById('cosmeticAccordion');
-    // Preserve which sections are open
-    const wasOpen = {};
-    container.querySelectorAll('.shop-section').forEach(s => {
-        const tab = s.dataset.tab;
-        const content = s.querySelector('.shop-section-content');
-        wasOpen[tab] = content && content.style.display !== 'none';
-    });
-    container.innerHTML = '';
+    const list = document.getElementById('cosmeticList');
+    list.innerHTML = '';
 
-    const categories = [
-        { tab: 'skins',   label: '🚀 SHIPS',   items: SHIP_SKINS,   owned: shopData.ownedSkins,       active: shopData.activeSkin },
-        { tab: 'trails',  label: '🔥 TRAILS',  items: TRAIL_EFFECTS, owned: shopData.ownedTrails,      active: shopData.activeTrail },
-        { tab: 'engines', label: '🔊 ENGINES', items: ENGINE_SOUNDS, owned: shopData.ownedEngines,     active: shopData.activeEngine },
-        { tab: 'killfx',  label: '💥 KILLS',   items: KILL_EFFECTS,  owned: shopData.ownedKillEffects, active: shopData.activeKillEffect },
-    ];
+    const cat = getShopCategory(cosmeticTab);
+    const item = cat.items.find(i => i.id === shopPreviewItemId) || cat.items[0];
 
-    for (const cat of categories) {
-        const section = document.createElement('div');
-        section.className = 'shop-section';
-        section.id = 'shopSection_' + cat.tab;
-        section.dataset.tab = cat.tab;
+    // Update preview label
+    const label = document.getElementById('shopPreviewLabel');
+    if (label && item) {
+        const isEquipped = cat.active === item.id;
+        label.innerHTML = '<span style="color:#ddd;font-weight:bold">' + item.name + '</span> — <span style="color:#777">' + item.desc + '</span>' +
+            (isEquipped ? ' <span style="color:#ffcc00">✓ EQUIPPED</span>' : '');
+    }
 
-        // Header bar (click to toggle)
-        const header = document.createElement('div');
-        const isOpen = wasOpen[cat.tab] !== undefined ? wasOpen[cat.tab] : (cat.tab === 'skins');
-        header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:.55em .7em;margin-top:.4em;border-radius:6px;border:1px solid #444;background:rgba(255,255,255,0.04);cursor:pointer;user-select:none';
-        const activeItem = cat.items.find(i => i.id === cat.active);
-        header.innerHTML = '<span style="color:#ccc;font-size:clamp(.8rem,2.3vw,.95rem);font-weight:bold">' + cat.label +
-            ' <span style="color:#666;font-weight:normal;font-size:.8em">(' + (activeItem ? activeItem.name : '—') + ')</span></span>' +
-            '<span class="shop-arrow" style="color:#888;font-size:.8em">' + (isOpen ? '▼' : '►') + '</span>';
-        header.addEventListener('click', () => showCosmeticTab(cat.tab));
-        section.appendChild(header);
+    // Add tap-to-hear handler for engine previews
+    const cv = document.getElementById('shopPreviewCanvas');
+    cv.onclick = cosmeticTab === 'engines' ? () => { initAudio(); engineSnd(shopPreviewItemId || 'default', 0.5); } : null;
+    cv.style.cursor = cosmeticTab === 'engines' ? 'pointer' : 'default';
 
-        // Content area
-        const content = document.createElement('div');
-        content.className = 'shop-section-content';
-        content.style.display = isOpen ? 'block' : 'none';
+    for (const itm of cat.items) {
+        const isOwned = cat.owned.includes(itm.id) || itm.free;
+        const isActive = cat.active === itm.id;
+        const isSelected = shopPreviewItemId === itm.id;
+        const row = document.createElement('div');
+        row.style.cssText = 'padding:.4em .55em;margin:.2em 0;border-radius:5px;border:1px solid ' +
+            (isSelected ? '#ffcc00' : isActive ? '#555' : '#222') + ';background:' +
+            (isSelected ? 'rgba(255,204,0,0.1)' : isActive ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.015)') +
+            ';display:flex;align-items:center;gap:.5em;cursor:pointer;user-select:none;box-sizing:border-box;min-height:2.6em';
+        row.addEventListener('click', ((id) => () => {
+            shopPreviewItemId = id;
+            shopPreviewParticles = [];
+            renderCosmeticShop();
+        })(itm.id));
 
-        for (const item of cat.items) {
-            const isOwned = cat.owned.includes(item.id) || item.free;
-            const isActive = cat.active === item.id;
-            const row = document.createElement('div');
-            row.style.cssText = 'padding:.45em .6em;margin:.25em 0;border-radius:5px;border:1px solid '+(isActive?'#ffcc00':isOwned?'#333':'#222')+';background:'+(isActive?'rgba(255,204,0,0.08)':'rgba(255,255,255,0.02)')+';display:flex;align-items:center;gap:.5em';
-
-            // Inline preview
-            if (cat.tab === 'skins') {
-                const pc = document.createElement('canvas');
-                pc.width = 40; pc.height = 40;
-                pc.style.cssText = 'width:40px;height:40px;flex-shrink:0';
-                const c = pc.getContext('2d');
-                c.fillStyle = '#0a0012'; c.fillRect(0, 0, 40, 40);
-                c.save(); c.translate(20, 22);
-                const sColor = item.color || '#00ccff';
-                if (item.id === 'neon') { c.shadowColor = sColor; c.shadowBlur = 8; }
-                if (item.id === 'ghost') { c.globalAlpha = 0.55; }
-                c.fillStyle = sColor;
-                c.beginPath(); drawShipShape(c, item.id, 12); c.fill();
-                c.strokeStyle = item.id === 'gold' ? '#ffee88' : '#fff'; c.lineWidth = 0.8; c.stroke();
-                c.fillStyle = '#fff'; c.beginPath(); c.arc(0, -12 * 0.2, 12 * 0.18, 0, Math.PI * 2); c.fill();
-                c.shadowBlur = 0; c.globalAlpha = 1;
-                c.restore();
-                // Mini flame
-                c.save(); c.translate(20, 22);
-                c.fillStyle = '#ff8800'; c.globalAlpha = 0.6;
-                c.beginPath(); c.moveTo(-3, 9); c.lineTo(0, 16); c.lineTo(3, 9); c.closePath(); c.fill();
-                c.globalAlpha = 1; c.restore();
-                row.appendChild(pc);
-            } else if (cat.tab === 'trails') {
-                const sw = document.createElement('div');
-                sw.style.cssText = 'width:40px;height:40px;border-radius:4px;flex-shrink:0;overflow:hidden';
-                if (item.rainbow) {
-                    sw.style.background = 'linear-gradient(135deg,red,orange,yellow,green,blue,purple)';
-                } else if (item.colors) {
-                    sw.style.background = 'linear-gradient(180deg,' + item.colors.join(',') + ')';
-                } else { sw.style.background = 'linear-gradient(180deg,#ff8800,#ffcc00)'; }
-                row.appendChild(sw);
-            } else if (cat.tab === 'engines') {
-                const eIcon = document.createElement('div');
-                const eColor = item.id === 'default' ? '#ff8800' : item.id === 'rumble' ? '#ff4400' : item.id === 'whine' ? '#88ddff' : item.id === 'pulse' ? '#44ff88' : item.id === 'roar' ? '#ff6600' : '#aaddff';
-                eIcon.style.cssText = 'width:40px;height:40px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:20px;color:' + eColor;
-                eIcon.textContent = '🔊';
-                eIcon.addEventListener('click', ((id) => (e) => { e.stopPropagation(); initAudio(); engineSnd(id, 0.5); })(item.id));
-                row.appendChild(eIcon);
-            } else {
-                const kIcon = document.createElement('div');
-                kIcon.style.cssText = 'width:40px;height:40px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:20px;color:' + (item.color || '#ff4400');
-                kIcon.textContent = '💥';
-                row.appendChild(kIcon);
-            }
-
-            // Info
-            const info = document.createElement('div');
-            info.style.cssText = 'flex:1;min-width:0';
-            info.innerHTML = '<div style="color:'+(isOwned?'#ddd':'#888')+';font-size:clamp(.7rem,2.1vw,.85rem);font-weight:bold">' + item.name + '</div>' +
-                '<div style="color:#555;font-size:clamp(.5rem,1.4vw,.65rem)">' + item.desc + '</div>';
-            row.appendChild(info);
-
-            // Action button
-            const btn = document.createElement('button');
-            btn.className = 'btn sm';
-            btn.style.cssText = 'min-width:55px;font-size:clamp(.55rem,1.6vw,.72rem);padding:.35em .6em';
-            if (isActive) {
-                btn.textContent = '✓';
-                btn.disabled = true;
-                btn.style.borderColor = '#ffcc00'; btn.style.color = '#ffcc00';
-            } else if (isOwned) {
-                btn.textContent = 'EQUIP';
-                btn.onclick = (e) => { e.stopPropagation(); equipCosmetic(cat.tab, item.id); };
-            } else {
-                btn.textContent = '$' + (item.price / 100).toFixed(2);
-                btn.style.borderColor = '#ffcc00'; btn.style.color = '#ffcc00';
-                btn.onclick = (e) => { e.stopPropagation(); buyCosmetic(cat.tab, item.id, item.price); };
-            }
-            row.appendChild(btn);
-            content.appendChild(row);
+        // Small color indicator (not a canvas — just a styled div)
+        const dot = document.createElement('div');
+        dot.style.cssText = 'width:10px;height:10px;border-radius:50%;flex-shrink:0';
+        if (cosmeticTab === 'skins') {
+            dot.style.background = itm.color || '#00ccff';
+        } else if (cosmeticTab === 'trails') {
+            dot.style.background = itm.rainbow ? 'linear-gradient(135deg,red,blue,green)' : (itm.colors ? itm.colors[0] : '#ff8800');
+        } else if (cosmeticTab === 'engines') {
+            dot.style.background = itm.id === 'default' ? '#ff8800' : itm.id === 'rumble' ? '#ff4400' : itm.id === 'whine' ? '#88ddff' : itm.id === 'pulse' ? '#44ff88' : itm.id === 'roar' ? '#ff6600' : '#aaddff';
+        } else {
+            dot.style.background = itm.color || '#ff4400';
         }
-        section.appendChild(content);
-        container.appendChild(section);
+        if (isActive) { dot.style.boxShadow = '0 0 6px ' + dot.style.background; }
+        row.appendChild(dot);
+
+        // Info
+        const info = document.createElement('div');
+        info.style.cssText = 'flex:1;min-width:0;overflow:hidden';
+        info.innerHTML = '<div style="color:' + (isOwned ? '#ddd' : '#999') + ';font-size:clamp(.65rem,2vw,.8rem);font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' +
+            itm.name + (isActive ? ' <span style="color:#ffcc00;font-size:.75em">✓</span>' : '') + '</div>';
+        row.appendChild(info);
+
+        // Action button
+        const btn = document.createElement('button');
+        btn.className = 'btn sm';
+        btn.style.cssText = 'min-width:50px;font-size:clamp(.55rem,1.5vw,.7rem);padding:.3em .5em;flex-shrink:0';
+        if (isActive) {
+            btn.textContent = 'EQUIPPED';
+            btn.disabled = true;
+            btn.style.borderColor = '#555'; btn.style.color = '#555';
+        } else if (isOwned) {
+            btn.textContent = 'EQUIP';
+            btn.onclick = (e) => { e.stopPropagation(); equipCosmetic(cosmeticTab, itm.id); };
+        } else {
+            btn.textContent = '$' + (itm.price / 100).toFixed(2);
+            btn.style.borderColor = '#ffcc00'; btn.style.color = '#ffcc00';
+            btn.onclick = (e) => { e.stopPropagation(); buyCosmetic(cosmeticTab, itm.id, itm.price); };
+        }
+        row.appendChild(btn);
+        list.appendChild(row);
     }
 }
+
 function equipCosmetic(tab, id) {
     if (tab === 'skins') shopData.activeSkin = id;
     else if (tab === 'trails') shopData.activeTrail = id;
     else if (tab === 'engines') shopData.activeEngine = id;
     else if (tab === 'killfx') shopData.activeKillEffect = id;
+    shopPreviewItemId = id;
     saveShop();
     renderCosmeticShop();
 }
 function buyCosmetic(tab, id, price) {
-    // Mock purchase — in production this would go through Play Store / Stripe
-    // For now, just unlock it for free with a confirmation
     const item = (tab === 'skins' ? SHIP_SKINS : tab === 'trails' ? TRAIL_EFFECTS : tab === 'engines' ? ENGINE_SOUNDS : KILL_EFFECTS).find(i => i.id === id);
     if (!item) return;
-    // Mock: auto-grant for testing
     if (tab === 'skins') { if (!shopData.ownedSkins.includes(id)) shopData.ownedSkins.push(id); }
     else if (tab === 'trails') { if (!shopData.ownedTrails.includes(id)) shopData.ownedTrails.push(id); }
     else if (tab === 'engines') { if (!shopData.ownedEngines.includes(id)) shopData.ownedEngines.push(id); }
     else if (tab === 'killfx') { if (!shopData.ownedKillEffects.includes(id)) shopData.ownedKillEffects.push(id); }
+    shopPreviewItemId = id;
     saveShop();
     renderCosmeticShop();
 }
