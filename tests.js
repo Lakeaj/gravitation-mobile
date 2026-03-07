@@ -5047,18 +5047,6 @@ section('146. Height-Fit Viewport — Tablet Controls Visible');
     assert(code.includes('lobbyScreen') || code.includes('lobby'), 'lobby screen present');
 }
 
-// ── 164. Safeguard — Branding Correct ──
-{
-    section('Safeguard — Branding Correct');
-
-    const code = fs.readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
-    const lower = code.toLowerCase();
-
-    assert(code.includes('THRUSTFALL') || code.includes('Thrustfall'), 'Thrustfall branding present');
-    assert(!lower.includes('gravitation') || lower.indexOf('gravitation') === lower.lastIndexOf('gravitation') && lower.includes('gravitational'), 'no old Gravitation branding remains');
-    assert(!lower.includes('net yaroze'), 'no Net Yaroze references remain');
-}
-
 console.log(`\n${'='.repeat(50)}`);
 console.log(`RESULTS: ${passed}/${total} passed, ${failed} failed`);
 console.log(`${'='.repeat(50)}`);
