@@ -4172,6 +4172,21 @@ function applySavedName() {
 // Apply on page load
 setTimeout(applySavedName, 100);
 
+// Start menu theme on first user interaction (Web Audio requires gesture)
+(function() {
+    function startMenuOnInteraction() {
+        document.removeEventListener('click', startMenuOnInteraction);
+        document.removeEventListener('touchstart', startMenuOnInteraction);
+        document.removeEventListener('keydown', startMenuOnInteraction);
+        // Only start if still on menu screen
+        const ms = document.getElementById('menuScreen');
+        if (ms && ms.classList.contains('active')) startMenuTheme();
+    }
+    document.addEventListener('click', startMenuOnInteraction);
+    document.addEventListener('touchstart', startMenuOnInteraction);
+    document.addEventListener('keydown', startMenuOnInteraction);
+})();
+
 // Register Service Worker for offline support
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
