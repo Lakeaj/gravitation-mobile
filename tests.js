@@ -2203,11 +2203,11 @@ section('72. Fire Latch for Input Throttling');
 section('73. Server Correction Blending');
 // =====================================================
 {
-    // CORRECTION_RATE = 0.2 blends client toward server truth
-    const CORRECTION_RATE = 0.2;
+    // CORRECTION_RATE = 0.3 blends client toward server truth
+    const CORRECTION_RATE = 0.3;
     let clientX = 100, serverX = 110;
     clientX += (serverX - clientX) * CORRECTION_RATE;
-    assertApprox(clientX, 102, 0.001, 'correction moves 20% toward server');
+    assertApprox(clientX, 103, 0.001, 'correction moves 30% toward server');
 
     // After several corrections, should converge
     let cx = 100;
@@ -2611,7 +2611,7 @@ section('91. Interpolation Buffer Ordering');
 // =====================================================
 {
     // Interpolation requires sorted time-ordered state buffer
-    const INTERP_DELAY = 80; // ms
+    const INTERP_DELAY = 50; // ms
     const buffer = [
         { time: 1000, state: {} },
         { time: 1033, state: {} },
@@ -2620,7 +2620,7 @@ section('91. Interpolation Buffer Ordering');
     ];
 
     const now = 1150;
-    const renderTime = now - INTERP_DELAY; // 1070
+    const renderTime = now - INTERP_DELAY; // 1100
 
     // Find interpolation pair
     let prev = null, next = null;
@@ -2636,7 +2636,7 @@ section('91. Interpolation Buffer Ordering');
 
     // Interpolation factor
     const t = (renderTime - prev.time) / (next.time - prev.time);
-    assertApprox(t, (1070 - 1066) / (1100 - 1066), 0.001, 'interpolation factor correct');
+    assertApprox(t, (1100 - 1066) / (1100 - 1066), 0.001, 'interpolation factor correct');
     assert(t >= 0 && t <= 1, 'factor in [0,1] range');
 }
 
@@ -5652,7 +5652,7 @@ section('188. Server Rate Limiting');
 {
     const sCode = fs.readFileSync(require('path').join(__dirname, 'server.js'), 'utf8');
     assert(sCode.includes('msgCount') && sCode.includes('msgResetTime'), 'rate limit variables exist');
-    assert(sCode.includes('++msgCount > 60'), 'rate limit at 60 messages per second');
+    assert(sCode.includes('++msgCount > 120'), 'rate limit at 120 messages per second');
     assert(sCode.includes('now - msgResetTime > 1000'), 'rate limit resets every second');
 }
 

@@ -350,8 +350,8 @@ let playerInputs = [];
 
 // Client-side prediction & interpolation
 let stateBuffer = []; // [{time, state}] for smooth remote player rendering
-const INTERP_DELAY = 80; // ms behind real time for remote players
-const CORRECTION_RATE = 0.2; // blend rate toward server truth for local player
+const INTERP_DELAY = 50; // ms behind real time for remote players
+const CORRECTION_RATE = 0.3; // blend rate toward server truth for local player
 let lastStateTime = 0; // tracks when we last got new server state
 let inputFrame = 0; // throttle input sending
 let fireLatch = false; // latched fire input so quick taps aren't missed between 30Hz sends
@@ -2520,11 +2520,11 @@ function clientUpdate() {
     frame++;
     const now = performance.now();
 
-    // Send input to server via WebSocket (throttled to 30Hz — server ticks at 30Hz)
+    // Send input to server via WebSocket (60Hz — every frame for minimal input latency)
     const li = getLocalInput();
-    if (li.fire) fireLatch = true; // latch fire so quick taps aren't missed between sends
+    if (li.fire) fireLatch = true; // latch fire so quick taps aren't missed
     inputFrame++;
-    if (ws && ws.readyState === WebSocket.OPEN && (inputFrame & 1) === 0) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
         _inputMsg.r = li.rot; _inputMsg.th = li.thrust; _inputMsg.rv = li.revThrust; _inputMsg.f = fireLatch;
         ws.send(JSON.stringify(_inputMsg));
         fireLatch = false; // clear latch after sending

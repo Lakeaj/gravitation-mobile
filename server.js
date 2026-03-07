@@ -986,10 +986,10 @@ wss.on('connection', (ws) => {
     let msgCount = 0, msgResetTime = Date.now();
 
     ws.on('message', (raw) => {
-        // Rate limiting: max 60 messages per second
+        // Rate limiting: max 120 messages per second (inputs arrive at 60Hz + occasional other msgs)
         const now = Date.now();
         if (now - msgResetTime > 1000) { msgCount = 0; msgResetTime = now; }
-        if (++msgCount > 60) return;
+        if (++msgCount > 120) return;
 
         let data;
         try { data = JSON.parse(raw); } catch (e) { return; }
