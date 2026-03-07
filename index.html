@@ -2015,55 +2015,110 @@ function drawHUD() {
     }
 }
 
-// ---------- RADAR ----------
+// ---------- RADAR (player-centered) ----------
 function drawRadar() {
     const me = players[myIndex];
     if (!me) return;
-    const rSz = Math.max(50, Math.min(W*.15, 80));
-    const rX = W-rSz-8, rY = 30;
-    const rCx = rX+rSz/2, rCy = rY+rSz/2;
-    const scX = (rSz-6)/worldW, scY = (rSz-6)/worldH;
-    const oX = rX+3, oY = rY+3;
+    const viewP = me.alive ? me : (spectatingIdx>=0 ? players[spectatingIdx] : me);
+    const cx = viewP.x, cy = viewP.y;
 
-    ctx.fillStyle='rgba(0,0,0,0.6)';ctx.beginPath();ctx.arc(rCx,rCy,rSz/2,0,Math.PI*2);ctx.fill();
+    const rSz = Math.max(50, Math.min(W*.15, 80));
+    const rR = rSz/2; // radar circle radius in pixels
+    const rX = W-rSz-8, rY = 30;
+    const rCx = rX+rR, rCy = rY+rR;
+
+    // Visible world radius around player (show ~800px area around ship)
+    const viewRadius = Math.max(worldW, worldH) * 0.45;
+    const sc = rR / viewRadius; // world units → radar pixels
+
+    // Wrap-aware delta: returns dx,dy from center player to target
+    function wrapDelta(tx, ty) {
+        let dx = tx - cx, dy = ty - cy;
+        if (dx > worldW/2) dx -= worldW;
+        if (dx < -worldW/2) dx += worldW;
+        return {dx, dy};
+    }
+
+    // Convert world pos to radar pixel pos (returns null if outside radar circle)
+    function toRadar(tx, ty) {
+        const {dx, dy} = wrapDelta(tx, ty);
+        const rx = rCx + dx * sc, ry = rCy + dy * sc;
+        const distFromCenter = Math.sqrt((rx-rCx)*(rx-rCx)+(ry-rCy)*(ry-rCy));
+        if (distFromCenter > rR) return null;
+        return {rx, ry};
+    }
+
+    // Background circle
+    ctx.fillStyle='rgba(0,0,0,0.6)';ctx.beginPath();ctx.arc(rCx,rCy,rR,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle='rgba(255,255,255,0.2)';ctx.lineWidth=1;ctx.stroke();
 
-    // Terrain
-    ctx.strokeStyle='rgba(90,58,30,0.4)';ctx.lineWidth=1;ctx.beginPath();
-    for (let i=0;i<terrain.length;i+=3){const rx=oX+terrain[i].x*scX,ry=oY+terrain[i].y*scY;if(i===0)ctx.moveTo(rx,ry);else ctx.lineTo(rx,ry);}ctx.stroke();
+    // Clip to radar circle
+    ctx.save();
+    ctx.beginPath();ctx.arc(rCx,rCy,rR,0,Math.PI*2);ctx.clip();
+
+    // Terrain (sample points, connect visible ones)
+    ctx.strokeStyle='rgba(90,58,30,0.5)';ctx.lineWidth=1;ctx.beginPath();
+    let started=false;
+    for (let i=0;i<terrain.length;i+=2){
+        const p=toRadar(terrain[i].x,terrain[i].y);
+        if(p){if(!started){ctx.moveTo(p.rx,p.ry);started=true;}else ctx.lineTo(p.rx,p.ry);}
+        else started=false;
+    }
+    ctx.stroke();
+
+    // Ceiling
+    ctx.strokeStyle='rgba(90,58,30,0.3)';ctx.beginPath();
+    started=false;
+    for (let i=0;i<ceiling.length;i+=2){
+        const p=toRadar(ceiling[i].x,ceiling[i].y);
+        if(p){if(!started){ctx.moveTo(p.rx,p.ry);started=true;}else ctx.lineTo(p.rx,p.ry);}
+        else started=false;
+    }
+    ctx.stroke();
 
     // Platforms
-    ctx.fillStyle='rgba(90,58,30,0.3)';
-    for (const pl of platforms) ctx.fillRect(oX+pl.x*scX,oY+pl.y*scY,Math.max(1,pl.width*scX),1);
+    ctx.fillStyle='rgba(90,58,30,0.4)';
+    for (const pl of platforms){const p=toRadar(pl.x+pl.width/2,pl.y);if(p)ctx.fillRect(p.rx-Math.max(1,pl.width*sc/2),p.ry,Math.max(1,pl.width*sc),1);}
 
     // Bases
-    for (const pp of players){ctx.fillStyle=hexRGBA(pp.color,.4);ctx.fillRect(oX+pp.base.x*scX,oY+pp.base.y*scY,Math.max(2,pp.base.w*scX),Math.max(1,pp.base.h*scY));}
+    for (const pp of players){const p=toRadar(pp.base.x+pp.base.w/2,pp.base.y+pp.base.h/2);if(p){ctx.fillStyle=hexRGBA(pp.color,.4);ctx.fillRect(p.rx-Math.max(1,pp.base.w*sc/2),p.ry-Math.max(1,pp.base.h*sc/2),Math.max(2,pp.base.w*sc),Math.max(1,pp.base.h*sc));}}
 
     // Base explosions
-    for (const be of baseExps){const bp=be.t/be.dur;if(bp<1){ctx.fillStyle=`rgba(255,100,0,${.5-bp*.5})`;ctx.beginPath();ctx.arc(oX+be.x*scX,oY+be.y*scY,3,0,Math.PI*2);ctx.fill();}}
+    for (const be of baseExps){const bp=be.t/be.dur;if(bp<1){const p=toRadar(be.x,be.y);if(p){ctx.fillStyle=`rgba(255,100,0,${.5-bp*.5})`;ctx.beginPath();ctx.arc(p.rx,p.ry,3,0,Math.PI*2);ctx.fill();}}}
 
-    // Pickups on radar
+    // Pickups
     for (const pk of pickups){
         const pt = PICKUP_TYPES.find(t=>t.id===pk.type);
-        if (pt){ctx.fillStyle=pt.color;ctx.globalAlpha=.7;ctx.beginPath();ctx.arc(oX+pk.x*scX,oY+pk.y*scY,2,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
+        if(pt){const p=toRadar(pk.x,pk.y);if(p){ctx.fillStyle=pt.color;ctx.globalAlpha=.7;ctx.beginPath();ctx.arc(p.rx,p.ry,2,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}}
     }
 
-    // Players
+    // Other players
     for (const pp of players){
-        if (!pp.alive) continue;
-        ctx.fillStyle = pp.color;
-        ctx.beginPath();ctx.arc(oX+pp.x*scX,oY+pp.y*scY, pp.id===myIndex?3:2, 0,Math.PI*2);ctx.fill();
+        if (!pp.alive || pp.id===myIndex) continue;
+        const p=toRadar(pp.x,pp.y);
+        if(p){ctx.fillStyle=pp.color;ctx.beginPath();ctx.arc(p.rx,p.ry,2,0,Math.PI*2);ctx.fill();}
     }
 
-    // Arrow to nearest enemy if off-screen
-    const camP = (me.alive) ? me : (spectatingIdx>=0 ? players[spectatingIdx] : me);
+    // Local player (always center)
+    if (viewP.alive) {
+        ctx.fillStyle=viewP.color;ctx.beginPath();ctx.arc(rCx,rCy,3,0,Math.PI*2);ctx.fill();
+        // Direction indicator
+        ctx.strokeStyle=viewP.color;ctx.lineWidth=1.5;ctx.beginPath();
+        ctx.moveTo(rCx,rCy);
+        ctx.lineTo(rCx+Math.cos(viewP.angle)*7,rCy+Math.sin(viewP.angle)*7);
+        ctx.stroke();
+    }
+
+    ctx.restore(); // undo clip
+
+    // Edge arrows for enemies outside radar range
     for (const pp of players) {
         if (pp.id===myIndex||!pp.alive) continue;
-        let dx=pp.x-camP.camX, dy=pp.y-camP.camY;
-        if (dx > worldW/2) dx -= worldW; if (dx < -worldW/2) dx += worldW;
-        if (Math.abs(dx)>W/2||Math.abs(dy)>H/2) {
+        const {dx, dy} = wrapDelta(pp.x, pp.y);
+        const rdist = Math.sqrt(dx*dx+dy*dy) * sc;
+        if (rdist > rR) {
             const ang=Math.atan2(dy,dx);
-            const ax=rCx+Math.cos(ang)*(rSz/2+7), ay=rCy+Math.sin(ang)*(rSz/2+7);
+            const ax=rCx+Math.cos(ang)*(rR+7), ay=rCy+Math.sin(ang)*(rR+7);
             ctx.fillStyle=pp.color;ctx.save();ctx.translate(ax,ay);ctx.rotate(ang);ctx.beginPath();ctx.moveTo(5,0);ctx.lineTo(-3,-3);ctx.lineTo(-3,3);ctx.closePath();ctx.fill();ctx.restore();
         }
     }
