@@ -403,40 +403,40 @@ const PERKS = [
 // ---------- COSMETIC SHOP ----------
 const SHIP_SKINS = [
     {id:'default', name:'STANDARD',    desc:'Classic arrowhead',           price:0,    color:null, free:true,  shape:'default'},
-    {id:'neon',    name:'NEON',         desc:'Sleek racer silhouette',     price:99,   color:'#00ffff',  shape:'neon'},
-    {id:'stealth', name:'STEALTH',      desc:'Dark angular silhouette',    price:99,   color:'#334455',  shape:'stealth'},
+    {id:'neon',    name:'NEON',         desc:'Sleek racer silhouette',     price:199,  color:'#00ffff',  shape:'neon'},
+    {id:'stealth', name:'STEALTH',      desc:'Dark angular silhouette',    price:199,  color:'#334455',  shape:'stealth'},
     {id:'phoenix', name:'PHOENIX',      desc:'Spread-wing firebird',       price:199,  color:'#ff4400',  shape:'phoenix'},
     {id:'gold',    name:'GOLD',         desc:'Ornate royal cruiser',       price:199,  color:'#ffcc00',  shape:'gold'},
-    {id:'ghost',   name:'GHOST',        desc:'Ethereal phantom vessel',    price:149,  color:'#8866ff',  shape:'ghost'},
-    {id:'trident', name:'TRIDENT',      desc:'Three-pronged warfork',      price:149,  color:'#00ff88',  shape:'trident'},
-    {id:'manta',   name:'MANTA',        desc:'Wide curved stingray',       price:249,  color:'#0088ff',  shape:'manta'},
-    {id:'blade',   name:'BLADE',        desc:'Ultra-thin dagger ship',     price:149,  color:'#ff3366',  shape:'blade'},
+    {id:'ghost',   name:'GHOST',        desc:'Ethereal phantom vessel',    price:199,  color:'#8866ff',  shape:'ghost'},
+    {id:'trident', name:'TRIDENT',      desc:'Three-pronged warfork',      price:199,  color:'#00ff88',  shape:'trident'},
+    {id:'manta',   name:'MANTA',        desc:'Wide curved stingray',       price:199,  color:'#0088ff',  shape:'manta'},
+    {id:'blade',   name:'BLADE',        desc:'Ultra-thin dagger ship',     price:199,  color:'#ff3366',  shape:'blade'},
     {id:'fortress',name:'FORTRESS',     desc:'Heavy armored hexhull',      price:199,  color:'#ff8800',  shape:'fortress'},
-    {id:'falcon',  name:'FALCON',       desc:'Four-finned strike craft',   price:249,  color:'#44ddaa',  shape:'falcon'},
+    {id:'falcon',  name:'FALCON',       desc:'Four-finned strike craft',   price:199,  color:'#44ddaa',  shape:'falcon'},
 ];
 const TRAIL_EFFECTS = [
     {id:'default', name:'STANDARD',    desc:'Default exhaust',             price:0,    free:true},
-    {id:'ice',     name:'ICE',         desc:'Blue ice crystals',           price:99,   colors:['#88ddff','#aaeeff','#ccf4ff']},
-    {id:'fire',    name:'INFERNO',     desc:'Raging fire exhaust',         price:99,   colors:['#ff2200','#ff6600','#ffaa00']},
-    {id:'plasma',  name:'PLASMA',      desc:'Purple plasma stream',        price:149,  colors:['#aa44ff','#cc66ff','#8822dd']},
+    {id:'ice',     name:'ICE',         desc:'Blue ice crystals',           price:199,  colors:['#88ddff','#aaeeff','#ccf4ff']},
+    {id:'fire',    name:'INFERNO',     desc:'Raging fire exhaust',         price:199,  colors:['#ff2200','#ff6600','#ffaa00']},
+    {id:'plasma',  name:'PLASMA',      desc:'Purple plasma stream',        price:199,  colors:['#aa44ff','#cc66ff','#8822dd']},
     {id:'rainbow', name:'RAINBOW',     desc:'Color-cycling exhaust',       price:199,  colors:null, rainbow:true},
-    {id:'toxic',   name:'TOXIC',       desc:'Green acid trail',            price:99,   colors:['#44ff00','#88ff44','#aaff88']},
+    {id:'toxic',   name:'TOXIC',       desc:'Green acid trail',            price:199,  colors:['#44ff00','#88ff44','#aaff88']},
 ];
 const ENGINE_SOUNDS = [
     {id:'default', name:'STANDARD',  desc:'Classic thrust',          price:0,   free:true},
-    {id:'rumble',  name:'RUMBLE',    desc:'Deep bass growl',         price:99},
-    {id:'whine',   name:'WHINE',    desc:'Electric turbine whine',  price:99},
-    {id:'pulse',   name:'PULSE',    desc:'Pulsing thruster',        price:149},
+    {id:'rumble',  name:'RUMBLE',    desc:'Deep bass growl',         price:199},
+    {id:'whine',   name:'WHINE',    desc:'Electric turbine whine',  price:199},
+    {id:'pulse',   name:'PULSE',    desc:'Pulsing thruster',        price:199},
     {id:'roar',    name:'ROAR',     desc:'Aggressive roar',         price:199},
-    {id:'hum',     name:'HUM',      desc:'Smooth ion drive',        price:99},
+    {id:'hum',     name:'HUM',      desc:'Smooth ion drive',        price:199},
 ];
 const KILL_EFFECTS = [
     {id:'default',  name:'STANDARD', desc:'Classic explosion',       price:0,   free:true,  color:null},
-    {id:'vortex',   name:'VORTEX',   desc:'Imploding vortex',        price:149, color:'#8800ff'},
-    {id:'electric', name:'ELECTRIC', desc:'Lightning discharge',     price:99,  color:'#00eeff'},
-    {id:'shatter',  name:'SHATTER',  desc:'Glass fragment spray',    price:99,  color:'#aaccff'},
+    {id:'vortex',   name:'VORTEX',   desc:'Imploding vortex',        price:199, color:'#8800ff'},
+    {id:'electric', name:'ELECTRIC', desc:'Lightning discharge',     price:199, color:'#00eeff'},
+    {id:'shatter',  name:'SHATTER',  desc:'Glass fragment spray',    price:199, color:'#aaccff'},
     {id:'nova',     name:'NOVA',     desc:'Supernova ring burst',    price:199, color:'#ffff44'},
-    {id:'void',     name:'VOID',     desc:'Dark matter collapse',    price:149, color:'#6600aa'},
+    {id:'void',     name:'VOID',     desc:'Dark matter collapse',    price:199, color:'#6600aa'},
 ];
 
 // Player shop data (persisted)
@@ -451,10 +451,91 @@ let shopData = {
     activeTrail: 'default',
     activeEngine: 'default',
     activeKillEffect: 'default',
-    coins: 0              // premium currency (cents) — mock for now
+    coins: 0              // legacy field, kept for compat
 };
 try { const _sh = JSON.parse(localStorage.getItem('gravShop')); if (_sh) Object.assign(shopData, _sh); } catch(e){}
 function saveShop() { try { localStorage.setItem('gravShop', JSON.stringify(shopData)); } catch(e){} }
+
+// ---------- IN-APP PURCHASES (Google Play Billing) ----------
+const IS_NATIVE = typeof window !== 'undefined' && window.Capacitor &&
+    window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+
+function getProductId(tab, id) {
+    const prefix = tab === 'skins' ? 'skin' : tab === 'trails' ? 'trail' : tab === 'engines' ? 'engine' : 'killfx';
+    return prefix + '_' + id;
+}
+
+// Build list of all purchasable product IDs
+const ALL_PRODUCT_IDS = [];
+[{tab:'skins', items:SHIP_SKINS}, {tab:'trails', items:TRAIL_EFFECTS},
+ {tab:'engines', items:ENGINE_SOUNDS}, {tab:'killfx', items:KILL_EFFECTS}].forEach(({tab, items}) => {
+    items.forEach(item => { if (!item.free) ALL_PRODUCT_IDS.push(getProductId(tab, item.id)); });
+});
+
+let billingReady = false;
+
+function unlockByProductId(productId) {
+    const parts = productId.split('_');
+    const prefix = parts[0];
+    const id = parts.slice(1).join('_');
+    if (prefix === 'skin')   { if (!shopData.ownedSkins.includes(id)) shopData.ownedSkins.push(id); }
+    else if (prefix === 'trail')  { if (!shopData.ownedTrails.includes(id)) shopData.ownedTrails.push(id); }
+    else if (prefix === 'engine') { if (!shopData.ownedEngines.includes(id)) shopData.ownedEngines.push(id); }
+    else if (prefix === 'killfx') { if (!shopData.ownedKillEffects.includes(id)) shopData.ownedKillEffects.push(id); }
+    saveShop();
+    if (typeof renderCosmeticShop === 'function') renderCosmeticShop();
+}
+
+function initBilling() {
+    if (!IS_NATIVE || billingReady) return;
+    const CdvP = window.CdvPurchase;
+    if (!CdvP || !CdvP.store) { setTimeout(initBilling, 1000); return; }
+    const store = CdvP.store;
+
+    ALL_PRODUCT_IDS.forEach(pid => {
+        store.register({ id: pid, type: CdvP.ProductType.NON_CONSUMABLE, platform: CdvP.Platform.GOOGLE_PLAY });
+    });
+
+    store.when().approved(transaction => {
+        const products = transaction.products || [];
+        products.forEach(p => { if (p.id) unlockByProductId(p.id); });
+        transaction.finish();
+    });
+
+    store.initialize([CdvP.Platform.GOOGLE_PLAY])
+        .then(() => { billingReady = true; })
+        .catch(err => console.warn('Billing init failed:', err));
+}
+
+function purchaseCosmetic(tab, id) {
+    if (!IS_NATIVE) {
+        // Web: free unlock (no payment processor on web)
+        unlockByProductId(getProductId(tab, id));
+        return;
+    }
+    if (!billingReady) { alert('Store not ready. Please try again in a moment.'); return; }
+    const store = window.CdvPurchase.store;
+    const product = store.get(getProductId(tab, id));
+    if (!product) { alert('Product not available.'); return; }
+    store.order(product).catch(err => {
+        console.warn('Purchase failed:', err);
+        alert('Purchase could not be completed.');
+    });
+}
+
+function restorePurchases() {
+    if (!IS_NATIVE) { alert('Restore is available on the mobile app.'); return; }
+    if (!billingReady || !window.CdvPurchase) { alert('Store not ready.'); return; }
+    window.CdvPurchase.store.restorePurchases()
+        .then(() => alert('Purchases restored!'))
+        .catch(() => alert('Could not restore purchases. Please try again.'));
+}
+
+// Init billing on native
+if (IS_NATIVE) {
+    document.addEventListener('deviceready', initBilling, false);
+    setTimeout(() => { if (!billingReady) initBilling(); }, 3000);
+}
 
 // Calculate total XP ever earned (for spending — NOT the leveling XP)
 function totalXPEarned() {
@@ -3977,8 +4058,8 @@ function unequipPerk(id) {
 }
 
 // =====================================================
-// COSMETIC SHOP (Premium — mock payments)
-// =====================================================
+// COSMETIC SHOP (Premium — Google Play Billing on native, free on web)
+// =====================================================================
 let cosmeticTab = 'skins';
 
 function showCosmeticShop() {
@@ -4111,7 +4192,12 @@ function drawInlineKill(canvas, item) {
 }
 
 function renderCosmeticShop() {
-    document.getElementById('coinDisplay').innerHTML = '💰 <span style="color:#ffcc00">$' + (shopData.coins / 100).toFixed(2) + '</span>';
+    const coinEl = document.getElementById('coinDisplay');
+    if (IS_NATIVE) {
+        coinEl.innerHTML = '<span style="cursor:pointer;color:#88aacc;font-size:clamp(.7rem,2.2vw,.85rem)" onclick="restorePurchases()">🔄 RESTORE</span>';
+    } else {
+        coinEl.innerHTML = '<span style="color:#666;font-size:clamp(.65rem,2vw,.8rem)">FREE ON WEB</span>';
+    }
     const list = document.getElementById('cosmeticList');
     list.innerHTML = '';
     const cat = getShopCategory(cosmeticTab);
@@ -4206,14 +4292,7 @@ function equipCosmetic(tab, id) {
     renderCosmeticShop();
 }
 function buyCosmetic(tab, id, price) {
-    const item = (tab === 'skins' ? SHIP_SKINS : tab === 'trails' ? TRAIL_EFFECTS : tab === 'engines' ? ENGINE_SOUNDS : KILL_EFFECTS).find(i => i.id === id);
-    if (!item) return;
-    if (tab === 'skins') { if (!shopData.ownedSkins.includes(id)) shopData.ownedSkins.push(id); }
-    else if (tab === 'trails') { if (!shopData.ownedTrails.includes(id)) shopData.ownedTrails.push(id); }
-    else if (tab === 'engines') { if (!shopData.ownedEngines.includes(id)) shopData.ownedEngines.push(id); }
-    else if (tab === 'killfx') { if (!shopData.ownedKillEffects.includes(id)) shopData.ownedKillEffects.push(id); }
-    saveShop();
-    renderCosmeticShop();
+    purchaseCosmetic(tab, id);
 }
 
 // Apply saved name to name inputs

@@ -20,6 +20,7 @@
     "@capacitor/android": "^8.2.0",
     "@capacitor/cli": "^8.2.0",
     "@capacitor/core": "^8.2.0",
-    "canvas": "^3.2.1"
+    "canvas": "^3.2.1",
+    "cordova-plugin-purchase": "^13.13.1"
   }
 }

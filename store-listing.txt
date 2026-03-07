@@ -32,7 +32,7 @@ Track milestones from First Blood to Unstoppable. Complete rotating daily challe
 • 6 trail effects (ice, fire, plasma, rainbow, toxic)
 • 6 engine sounds (rumble, whine, pulse, roar, hum)
 • 6 kill effects (vortex, electric, shatter, nova, void)
-All cosmetics are visible to other players in multiplayer.
+All cosmetics $1.99 each — purely visual, no pay-to-win. Visible to other players in multiplayer.
 
 ★ 6 HANDCRAFTED MAPS
 The Caves, Deep Canyon, Asteroid Field (low gravity), Twin Fortress, The Labyrinth, and The Arena (open dogfight). Each with unique dimensions and terrain generation.
@@ -47,6 +47,7 @@ No ads. No pay-to-win. Pure skill-based combat.
 
 CATEGORY: Action / Arcade
 CONTENT RATING: Everyone 10+ (Fantasy Violence)
+IN-APP PURCHASES: Yes ($1.99 per cosmetic item)
 TAGS: action, arcade, multiplayer, pvp, space, combat, physics, indie
 
 PRIVACY POLICY URL: https://thrustfall.onrender.com/privacy.html

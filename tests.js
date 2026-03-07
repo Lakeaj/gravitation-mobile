@@ -3286,40 +3286,40 @@ const PERKS = [
 ];
 const SHIP_SKINS = [
     {id:'default', name:'STANDARD',    desc:'Classic arrowhead',           price:0,    color:null, free:true,  shape:'default'},
-    {id:'neon',    name:'NEON',         desc:'Sleek racer silhouette',     price:99,   color:'#00ffff',  shape:'neon'},
-    {id:'stealth', name:'STEALTH',      desc:'Dark angular silhouette',    price:99,   color:'#334455',  shape:'stealth'},
+    {id:'neon',    name:'NEON',         desc:'Sleek racer silhouette',     price:199,  color:'#00ffff',  shape:'neon'},
+    {id:'stealth', name:'STEALTH',      desc:'Dark angular silhouette',    price:199,  color:'#334455',  shape:'stealth'},
     {id:'phoenix', name:'PHOENIX',      desc:'Spread-wing firebird',       price:199,  color:'#ff4400',  shape:'phoenix'},
     {id:'gold',    name:'GOLD',         desc:'Ornate royal cruiser',       price:199,  color:'#ffcc00',  shape:'gold'},
-    {id:'ghost',   name:'GHOST',        desc:'Ethereal phantom vessel',    price:149,  color:'#8866ff',  shape:'ghost'},
-    {id:'trident', name:'TRIDENT',      desc:'Three-pronged warfork',      price:149,  color:'#00ff88',  shape:'trident'},
-    {id:'manta',   name:'MANTA',        desc:'Wide curved stingray',       price:249,  color:'#0088ff',  shape:'manta'},
-    {id:'blade',   name:'BLADE',        desc:'Ultra-thin dagger ship',     price:149,  color:'#ff3366',  shape:'blade'},
+    {id:'ghost',   name:'GHOST',        desc:'Ethereal phantom vessel',    price:199,  color:'#8866ff',  shape:'ghost'},
+    {id:'trident', name:'TRIDENT',      desc:'Three-pronged warfork',      price:199,  color:'#00ff88',  shape:'trident'},
+    {id:'manta',   name:'MANTA',        desc:'Wide curved stingray',       price:199,  color:'#0088ff',  shape:'manta'},
+    {id:'blade',   name:'BLADE',        desc:'Ultra-thin dagger ship',     price:199,  color:'#ff3366',  shape:'blade'},
     {id:'fortress',name:'FORTRESS',     desc:'Heavy armored hexhull',      price:199,  color:'#ff8800',  shape:'fortress'},
-    {id:'falcon',  name:'FALCON',       desc:'Four-finned strike craft',   price:249,  color:'#44ddaa',  shape:'falcon'},
+    {id:'falcon',  name:'FALCON',       desc:'Four-finned strike craft',   price:199,  color:'#44ddaa',  shape:'falcon'},
 ];
 const TRAIL_EFFECTS = [
     {id:'default', name:'STANDARD',    desc:'Default exhaust',             price:0,    free:true},
-    {id:'ice',     name:'ICE',         desc:'Blue ice crystals',           price:99,   colors:['#88ddff','#aaeeff','#ccf4ff']},
-    {id:'fire',    name:'INFERNO',     desc:'Raging fire exhaust',         price:99,   colors:['#ff2200','#ff6600','#ffaa00']},
-    {id:'plasma',  name:'PLASMA',      desc:'Purple plasma stream',        price:149,  colors:['#aa44ff','#cc66ff','#8822dd']},
+    {id:'ice',     name:'ICE',         desc:'Blue ice crystals',           price:199,  colors:['#88ddff','#aaeeff','#ccf4ff']},
+    {id:'fire',    name:'INFERNO',     desc:'Raging fire exhaust',         price:199,  colors:['#ff2200','#ff6600','#ffaa00']},
+    {id:'plasma',  name:'PLASMA',      desc:'Purple plasma stream',        price:199,  colors:['#aa44ff','#cc66ff','#8822dd']},
     {id:'rainbow', name:'RAINBOW',     desc:'Color-cycling exhaust',       price:199,  colors:null, rainbow:true},
-    {id:'toxic',   name:'TOXIC',       desc:'Green acid trail',            price:99,   colors:['#44ff00','#88ff44','#aaff88']},
+    {id:'toxic',   name:'TOXIC',       desc:'Green acid trail',            price:199,  colors:['#44ff00','#88ff44','#aaff88']},
 ];
 const ENGINE_SOUNDS = [
     {id:'default', name:'STANDARD',  desc:'Classic thrust',          price:0,   free:true},
-    {id:'rumble',  name:'RUMBLE',    desc:'Deep bass growl',         price:99},
-    {id:'whine',   name:'WHINE',    desc:'Electric turbine whine',  price:99},
-    {id:'pulse',   name:'PULSE',    desc:'Pulsing thruster',        price:149},
+    {id:'rumble',  name:'RUMBLE',    desc:'Deep bass growl',         price:199},
+    {id:'whine',   name:'WHINE',    desc:'Electric turbine whine',  price:199},
+    {id:'pulse',   name:'PULSE',    desc:'Pulsing thruster',        price:199},
     {id:'roar',    name:'ROAR',     desc:'Aggressive roar',         price:199},
-    {id:'hum',     name:'HUM',      desc:'Smooth ion drive',        price:99},
+    {id:'hum',     name:'HUM',      desc:'Smooth ion drive',        price:199},
 ];
 const KILL_EFFECTS = [
     {id:'default',  name:'STANDARD', desc:'Classic explosion',       price:0,   free:true,  color:null},
-    {id:'vortex',   name:'VORTEX',   desc:'Imploding vortex',        price:149, color:'#8800ff'},
-    {id:'electric', name:'ELECTRIC', desc:'Lightning discharge',     price:99,  color:'#00eeff'},
-    {id:'shatter',  name:'SHATTER',  desc:'Glass fragment spray',    price:99,  color:'#aaccff'},
+    {id:'vortex',   name:'VORTEX',   desc:'Imploding vortex',        price:199, color:'#8800ff'},
+    {id:'electric', name:'ELECTRIC', desc:'Lightning discharge',     price:199, color:'#00eeff'},
+    {id:'shatter',  name:'SHATTER',  desc:'Glass fragment spray',    price:199, color:'#aaccff'},
     {id:'nova',     name:'NOVA',     desc:'Supernova ring burst',    price:199, color:'#ffff44'},
-    {id:'void',     name:'VOID',     desc:'Dark matter collapse',    price:149, color:'#6600aa'},
+    {id:'void',     name:'VOID',     desc:'Dark matter collapse',    price:199, color:'#6600aa'},
 ];
 
 function xpForLevel(lv) { return Math.floor(XP_LEVEL_BASE * Math.pow(XP_LEVEL_SCALE, lv - 1)); }
@@ -3872,19 +3872,19 @@ section('129. Cosmetic Rendering — Skin Properties');
     const trident = SHIP_SKINS.find(s => s.id === 'trident');
     assert(trident.color === '#00ff88', 'trident skin is emerald green');
     assert(trident.shape === 'trident', 'trident skin has unique trident shape');
-    assert(trident.price === 149, 'trident costs 149 cents');
+    assert(trident.price === 199, 'trident costs 199 cents');
 
     // Manta (wide curved stingray)
     const manta = SHIP_SKINS.find(s => s.id === 'manta');
     assert(manta.color === '#0088ff', 'manta skin is ocean blue');
     assert(manta.shape === 'manta', 'manta skin has unique manta shape');
-    assert(manta.price === 249, 'manta costs 249 cents');
+    assert(manta.price === 199, 'manta costs 199 cents');
 
     // Blade (ultra-thin dagger)
     const blade = SHIP_SKINS.find(s => s.id === 'blade');
     assert(blade.color === '#ff3366', 'blade skin is hot pink');
     assert(blade.shape === 'blade', 'blade skin has unique blade shape');
-    assert(blade.price === 149, 'blade costs 149 cents');
+    assert(blade.price === 199, 'blade costs 199 cents');
 
     // Fortress (heavy hexagonal)
     const fortress = SHIP_SKINS.find(s => s.id === 'fortress');
@@ -3896,7 +3896,7 @@ section('129. Cosmetic Rendering — Skin Properties');
     const falcon = SHIP_SKINS.find(s => s.id === 'falcon');
     assert(falcon.color === '#44ddaa', 'falcon skin is mint');
     assert(falcon.shape === 'falcon', 'falcon skin has unique falcon shape');
-    assert(falcon.price === 249, 'falcon costs 249 cents');
+    assert(falcon.price === 199, 'falcon costs 199 cents');
 
     // Every skin has a unique shape
     const shapes = SHIP_SKINS.map(s => s.shape);
@@ -4203,11 +4203,11 @@ section('138. Cosmetic Price Validation');
 
     // Total skin cost
     const totalSkinCost = SHIP_SKINS.reduce((s, sk) => s + (sk.price || 0), 0);
-    assert(totalSkinCost === 99 + 99 + 199 + 199 + 149 + 149 + 249 + 149 + 199 + 249, 'total skin cost = $17.40 (1740 cents)');
+    assert(totalSkinCost === 199 * 10, 'total skin cost = $19.90 (1990 cents)');
 
     // Total trail cost
     const totalTrailCost = TRAIL_EFFECTS.reduce((s, t) => s + (t.price || 0), 0);
-    assert(totalTrailCost === 99 + 99 + 149 + 199 + 99, 'total trail cost = $6.45 (645 cents)');
+    assert(totalTrailCost === 199 * 5, 'total trail cost = $9.95 (995 cents)');
 }
 
 // =====================================================

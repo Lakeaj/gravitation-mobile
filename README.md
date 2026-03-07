@@ -88,7 +88,7 @@ Everything is in one file. The rough layout:
 | 3819–3896 | Settings system (sensitivity, left-handed, music/SFX volume) |
 | 3856–3895 | Stats display (`showStats`) |
 | 3896–3980 | Perk shop JS (XP-based loadout) |
-| 3980–4110 | Cosmetic shop JS (mock payments, buy/equip/unlock) |
+| 3980–4110 | Cosmetic shop JS (Google Play Billing, buy/equip/unlock) |
 | 4113–4230 | Cosmetic rendering (`renderCosmeticShop`, ship/trail/kill previews) |
 | 4232–4295 | Splash screen, service worker registration, audio init |
 | 4297–4780 | Adaptive music system (4-layer + dynamic systems, stingers, combat intensity) |
@@ -237,7 +237,10 @@ Viewport is fixed: `VIEW_W = 412, VIEW_H = 732` (height-fit scaling — all devi
 - 6 trail effects: default (free), ice, fire, plasma, rainbow, toxic
 - 6 engine sounds: default (free), rumble, whine, pulse, roar, hum
 - 6 kill effects: default (free), vortex, electric, shatter, nova, void
-- Mock purchase system (no real payments implemented)
+- All paid cosmetics priced at $1.99 USD (flat rate)
+- Google Play Billing integration on Android (real IAP via `cordova-plugin-purchase`)
+- Free unlock on web version
+- Restore purchases support on native
 - Visible to other players in PVP (server stores skin/trail/engine/kill per player, broadcasts in start data)
 - Stored in `shopData.ownedSkins[]`, `shopData.activeSkin`, `shopData.ownedTrails[]`, `shopData.activeTrail`, `shopData.ownedEngines[]`, `shopData.activeEngine`, `shopData.ownedKills[]`, `shopData.activeKill`
 
